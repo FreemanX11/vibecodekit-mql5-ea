@@ -166,6 +166,10 @@ args = ["/path/to/vibecodekit-mql5-ea/mcp/mt5-bridge/server.py"]
 command = "python"
 args = ["/path/to/vibecodekit-mql5-ea/mcp/algo-forge-bridge/server.py"]
 env = { ALGO_FORGE_API_KEY = "your-key-here" }
+
+[mcp.servers.vibecodekit-bridge]
+command = "python"
+args = ["/path/to/vibecodekit-mql5-ea/mcp/vibecodekit-bridge/server.py"]
 ```
 
 ### 2.3. Chạy
@@ -245,6 +249,9 @@ claude mcp add mt5-bridge \
 claude mcp add algo-forge-bridge \
     --env ALGO_FORGE_API_KEY=your-key-here \
     -- python /path/to/vibecodekit-mql5-ea/mcp/algo-forge-bridge/server.py
+
+claude mcp add vibecodekit-bridge \
+    -- python /path/to/vibecodekit-mql5-ea/mcp/vibecodekit-bridge/server.py
 ```
 
 Verify:
@@ -289,8 +296,9 @@ Settings → MCP Servers → Add:
 | Command | `python.exe` |
 | Args | `C:\path\to\vibecodekit-mql5-ea\mcp\metaeditor-bridge\server.py` |
 
-Lặp lại cho `mt5-bridge` và `algo-forge-bridge`. Với `algo-forge-bridge`
-thêm env var `ALGO_FORGE_API_KEY` trong section "Environment".
+Lặp lại cho `mt5-bridge`, `algo-forge-bridge`, và `vibecodekit-bridge`.
+Với `algo-forge-bridge` thêm env var `ALGO_FORGE_API_KEY` trong section
+"Environment".
 
 ### 4.3. mt5-bridge trên Windows
 
@@ -364,6 +372,10 @@ Cursor → Settings → Features → Model Context Protocol → Add Server:
       "env": {
         "ALGO_FORGE_API_KEY": "your-key-here"
       }
+    },
+    "vibecodekit-bridge": {
+      "command": "python",
+      "args": ["/path/to/vibecodekit-mql5-ea/mcp/vibecodekit-bridge/server.py"]
     }
   }
 }

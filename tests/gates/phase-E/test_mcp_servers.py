@@ -41,6 +41,14 @@ def test_algo_forge_bridge_tools_list_shape() -> None:
     assert {"forge.init", "forge.pr.create", "forge.repo.list"} <= names
 
 
+def test_vibecodekit_bridge_tools_list_shape() -> None:
+    srv = _load("vibecodekit-bridge")
+    resp = srv.handle({"jsonrpc": "2.0", "id": 17, "method": "tools/list"})
+    names = {t["name"] for t in resp["result"]["tools"]}
+    assert {"spec.from_prompt", "spec.validate",
+            "build.auto", "verify.permission"} <= names
+
+
 def test_unknown_method_returns_error() -> None:
     srv = _load("metaeditor-bridge")
     resp = srv.handle({"jsonrpc": "2.0", "id": 13, "method": "no/such/method"})

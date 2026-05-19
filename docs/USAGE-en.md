@@ -20,7 +20,7 @@ Suitable for both new users and dev teams.
 2. [The 8-step build philosophy](#2-the-8-step-build-philosophy)
 3. [Commands by stage](#3-commands-by-stage)
 4. [End-to-end example: MACD+SAR EURUSD H1](#4-end-to-end-example)
-5. [Integrating the 3 MCP servers](#5-integrating-the-3-mcp-servers)
+5. [Integrating the 4 MCP servers](#5-integrating-the-4-mcp-servers)
 6. [23 anti-pattern detectors](#6-23-anti-pattern-detectors)
 7. [Troubleshooting](#7-troubleshooting)
 
@@ -370,10 +370,10 @@ XML, MFE/MAE report, canary log.
 
 ---
 
-## 5. Integrating the 3 MCP servers
+## 5. Integrating the 4 MCP servers
 
-All three speak JSON-RPC 2.0 over stdio per the MCP spec. Usable from
-any MCP client (Claude Desktop, Cursor, Codex, Devin, ...).
+All four speak JSON-RPC 2.0 over stdio per the MCP spec. Usable from
+any MCP client (Claude Desktop, Claude Code, Cursor, Codex, Devin, ...).
 
 ### 5.1. metaeditor-bridge
 
@@ -417,7 +417,20 @@ python mcp/mt5-bridge/server.py
 ALGO_FORGE_API_KEY=xxx python mcp/algo-forge-bridge/server.py
 ```
 
-### 5.4. MCP client configuration
+### 5.4. vibecodekit-bridge
+
+4 tools (PR-1 surface): `spec.from_prompt`, `spec.validate`,
+`build.auto`, `verify.permission`. Lets an AI coding agent
+(Codex CLI / Claude Code / Cursor / Devin / Claude Desktop) drive the
+full `prompt → spec → build → permission-gate` loop via JSON-RPC. Future
+PRs will extend this DISPATCH with the kit's verify / review / backtest
+surface; the wire format does not change.
+
+```bash
+python mcp/vibecodekit-bridge/server.py
+```
+
+### 5.5. MCP client configuration
 
 See [docs/ENV-SETUP-vi.md](ENV-SETUP-vi.md) for ready-to-paste configs
 for Claude Desktop, Cursor, Codex, and Devin.

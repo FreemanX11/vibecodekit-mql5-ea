@@ -21,7 +21,7 @@ người mới và dev team.
 2. [Triết lý: 8 bước build EA](#2-triết-lý-8-bước-build-ea)
 3. [Lệnh theo từng giai đoạn](#3-lệnh-theo-từng-giai-đoạn)
 4. [Ví dụ hoàn chỉnh: MACD+SAR EURUSD H1](#4-ví-dụ-hoàn-chỉnh-macdsar-eurusd-h1)
-5. [Tích hợp 3 MCP server](#5-tích-hợp-3-mcp-server)
+5. [Tích hợp 4 MCP server](#5-tích-hợp-4-mcp-server)
 6. [23 anti-pattern detector](#6-23-anti-pattern-detector)
 7. [Troubleshooting](#7-troubleshooting)
 
@@ -436,9 +436,9 @@ backtest XML + MFE/MAE report + canary log — đầy đủ 5 artefact ở
 
 ---
 
-## 5. Tích hợp 3 MCP server
+## 5. Tích hợp 4 MCP server
 
-Kit ship 3 MCP server theo chuẩn JSON-RPC 2.0 over stdio. Dùng được
+Kit ship 4 MCP server theo chuẩn JSON-RPC 2.0 over stdio. Dùng được
 từ bất kỳ MCP client nào (Claude Desktop, Cursor, Codex, Devin, …).
 
 ### 5.1. metaeditor-bridge
@@ -483,6 +483,22 @@ Khởi động:
 ```bash
 ALGO_FORGE_API_KEY=xxx python mcp/algo-forge-bridge/server.py
 ```
+
+### 5.4. vibecodekit-bridge
+
+4 tool (PR-1): `spec.from_prompt`, `spec.validate`, `build.auto`,
+`verify.permission`. Cho phép AI coding agent (Codex CLI / Claude Code
+/ Cursor / Devin) gọi thẳng vào pipeline `prompt → spec → build →
+permission gate` qua JSON-RPC.
+
+```bash
+python mcp/vibecodekit-bridge/server.py
+```
+
+Future PR sẽ mở rộng thêm các tool verify (lint/trader17/method_hiding
+/backtest/walkforward/MC/multibroker/fitness), review persona, và
+dashboard.publish.
+
 
 ### 5.4. Cấu hình MCP client
 
