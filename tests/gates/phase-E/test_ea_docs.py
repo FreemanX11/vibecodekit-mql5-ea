@@ -214,16 +214,62 @@ def test_render_markdown_has_frontmatter_fence() -> None:
 
 def test_render_markdown_includes_inputs_table() -> None:
     md = render_markdown(build_doc_content(_full_spec(), _MQ5_SAMPLE, _build_meta()))
-    assert "## EA Inputs" in md
-    assert "| Group | Name | Type | Default | Note |" in md
+    # PR-18.2: default lang is Vietnamese; the section header and table
+    # column labels are localized, but the code identifier ``InpRiskPct``
+    # is a project name and stays verbatim.
+    assert "## Tham số EA" in md
+    assert "| Nhóm | Tên | Kiểu | Mặc định | Ghi chú |" in md
     assert "`InpRiskPct`" in md
 
 
 def test_render_markdown_includes_take_notes() -> None:
     md = render_markdown(build_doc_content(_full_spec(), _MQ5_SAMPLE, _build_meta()))
-    assert "## Take Notes" in md
+    assert "## Lưu ý quan trọng" in md
     # Severity prefixes.
     assert "ℹ️" in md or "⚠️" in md or "🔥" in md
+
+
+def test_render_markdown_uses_english_labels_when_lang_en() -> None:
+    """Opt-in EN: when caller passes ``lang='en'`` the headers and
+    column labels switch but project identifiers stay the same."""
+    md = render_markdown(
+        build_doc_content(_full_spec(), _MQ5_SAMPLE, _build_meta(), lang="en")
+    )
+    assert "## EA Inputs" in md
+    assert "## Take Notes" in md
+    assert "| Group | Name | Type | Default | Note |" in md
+    assert "`InpRiskPct`" in md
+
+
+def test_render_markdown_contains_no_japanese_decorative_text() -> None:
+    """PR-18.2 contract: the Vietnamese docs must not leak the
+    legacy Japanese subtitle decorations (``ポートフォリオ`` etc.)."""
+    md = render_markdown(build_doc_content(_full_spec(), _MQ5_SAMPLE, _build_meta()))
+    for jp in ("ポートフォリオ", "システム", "アーキテクチャ"):
+        assert jp not in md
+    # Vietnamese subtitle is present (visual aesthetic preserved by
+    # 「 」 brackets but content is Vietnamese):
+    assert "「Danh mục」" in md or "「Hệ thống」" in md
+
+
+def test_render_markdown_overview_layers_localized_to_vietnamese() -> None:
+    """The §2 layer-stack labels and captions must read in Vietnamese
+    by default (e.g. 'Quản lý vốn' instead of 'Risk Guard')."""
+    md = render_markdown(build_doc_content(_full_spec(), _MQ5_SAMPLE, _build_meta()))
+    assert "Quản lý vốn" in md
+    assert "Tổng hợp tín hiệu" in md
+    assert "Thực thi lệnh" in md
+    # English layer titles must NOT appear in the default render:
+    assert "Risk Guard" not in md
+    assert "Signal Fusion" not in md
+
+
+def test_render_markdown_timeline_localized_to_vietnamese() -> None:
+    """Strategy-evolution timeline labels (Scan/Compose/Verify/Ship)
+    must be Vietnamese by default."""
+    md = render_markdown(build_doc_content(_full_spec(), _MQ5_SAMPLE, _build_meta()))
+    for vn in ("Quét", "Soạn", "Kiểm", "Phát hành"):
+        assert vn in md
 
 
 def test_render_markdown_escapes_pipe_in_note() -> None:
