@@ -156,6 +156,53 @@ def test_publish_relative_path_returns_absolute_file_uri(
     assert location.public_url == html.resolve().as_uri()
 
 
+def test_publish_relative_path_with_missing_command_does_not_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PR-14.1 hotfix: ``_publish_via_command`` previously called
+    ``html_path.as_uri()`` in each of its three fallback branches
+    (command-not-found / timeout / non-zero exit) without resolving,
+    so a relative ``html_path`` + a broken publish command crashed the
+    ``mql5-dashboard`` CLI with an uncaught ``ValueError``.
+    """
+    html = tmp_path / "quality-matrix.html"
+    html.write_text("<html></html>", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    rel = Path("quality-matrix.html")
+    assert not rel.is_absolute()
+
+    location = dashboard.publish(rel, publish_cmd="/does/not/exist/publisher")
+
+    assert location.error is not None
+    assert "publish command not found" in location.error
+    assert location.public_url is not None
+    assert location.public_url.startswith("file://")
+    assert location.public_url == html.resolve().as_uri()
+
+
+def test_publish_relative_path_with_failing_command_does_not_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PR-14.1 hotfix: same as above but for the ``returncode != 0`` path."""
+    html = tmp_path / "quality-matrix.html"
+    html.write_text("<html></html>", encoding="utf-8")
+    cmd = _python_publish_stub(
+        tmp_path, "broken",
+        "print('kaboom', file=sys.stderr)\nrc = 9",
+    )
+    monkeypatch.chdir(tmp_path)
+    rel = Path("quality-matrix.html")
+    assert not rel.is_absolute()
+
+    location = dashboard.publish(rel, publish_cmd=cmd)
+
+    assert location.error is not None
+    assert "exited 9" in location.error
+    assert location.public_url is not None
+    assert location.public_url.startswith("file://")
+    assert location.public_url == html.resolve().as_uri()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # render_from_pipeline — stage results → matrix cells
 # ─────────────────────────────────────────────────────────────────────────────
@@ -213,6 +260,30 @@ def test_cli_renders_and_skips_publish(
     assert parsed["public_url"].startswith("file://")
     assert parsed["error"] is None
     assert (out / "quality-matrix.html").is_file()
+
+
+def test_cli_relative_out_dir_with_no_publish_does_not_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """PR-14.1 hotfix: ``mql5-dashboard --no-publish --out-dir ./relative``
+    previously crashed at ``html_path.as_uri()`` inside ``main()`` because
+    ``html_path`` inherited the relative path from ``--out-dir``.
+    """
+    monkeypatch.chdir(tmp_path)
+    rc = dashboard.main([
+        "--out-dir", "dash",
+        "--name", "RelCliEA",
+        "--stage", "build=ok",
+        "--no-publish",
+    ])
+    assert rc == 0
+    parsed = json.loads(capsys.readouterr().out)
+    assert parsed["public_url"].startswith("file://")
+    assert parsed["error"] is None
+    expected = (tmp_path / "dash" / "quality-matrix.html").resolve().as_uri()
+    assert parsed["public_url"] == expected
 
 
 def test_cli_invokes_publish_command(

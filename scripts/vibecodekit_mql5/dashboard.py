@@ -72,6 +72,12 @@ class DashboardLocation:
 
 def _publish_via_command(html_path: Path, cmd: str) -> DashboardLocation:
     argv = shlex.split(cmd) + [str(html_path)]
+    # Resolve once so every fallback ``file://`` URI below is well-formed
+    # regardless of whether the caller passed a relative ``html_path``
+    # (PR-14.1 hotfix — ``Path.as_uri()`` raises ``ValueError`` on
+    # relative paths, which leaked through the ``mql5-dashboard`` CLI when
+    # the publish command was missing / timed out / exited non-zero).
+    fallback_uri = html_path.resolve().as_uri()
     try:
         result = subprocess.run(
             argv,
@@ -83,14 +89,14 @@ def _publish_via_command(html_path: Path, cmd: str) -> DashboardLocation:
     except FileNotFoundError as exc:
         return DashboardLocation(
             local_path=str(html_path),
-            public_url=html_path.as_uri(),
+            public_url=fallback_uri,
             error=f"publish command not found: {exc}",
             command=cmd,
         )
     except subprocess.TimeoutExpired:
         return DashboardLocation(
             local_path=str(html_path),
-            public_url=html_path.as_uri(),
+            public_url=fallback_uri,
             error=f"publish command timed out after {PUBLISH_TIMEOUT_SECONDS}s",
             command=cmd,
         )
@@ -100,7 +106,7 @@ def _publish_via_command(html_path: Path, cmd: str) -> DashboardLocation:
         err_tail = (result.stderr or "")[-2048:]
         return DashboardLocation(
             local_path=str(html_path),
-            public_url=html_path.as_uri(),
+            public_url=fallback_uri,
             error=f"publish command exited {result.returncode}: {err_tail.strip()}",
             command=cmd,
         )
@@ -272,9 +278,11 @@ def main(argv: list[str] | None = None) -> int:
     digest = _digest_from_args(args.stage, args.name, args.ok)
     html_path = write_dashboard(digest, args.out_dir)
     if args.no_publish:
+        # ``Path.as_uri()`` raises ``ValueError`` on relative paths; resolve
+        # so ``mql5-dashboard --no-publish --out-dir ./relative`` works.
         location = DashboardLocation(
             local_path=str(html_path),
-            public_url=html_path.as_uri(),
+            public_url=html_path.resolve().as_uri(),
             error=None,
             command=None,
         )
