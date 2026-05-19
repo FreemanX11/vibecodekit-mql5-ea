@@ -46,6 +46,16 @@ def _call(srv, name: str, arguments: dict, rid: int = 1):
     return json.loads(resp["result"]["content"][0]["text"])
 
 
+def _call_for_error(srv, name: str, arguments: dict, rid: int = 1) -> dict:
+    """Like :func:`_call` but expects a JSON-RPC error envelope."""
+    resp = srv.handle({
+        "jsonrpc": "2.0", "id": rid, "method": "tools/call",
+        "params": {"name": name, "arguments": arguments},
+    })
+    assert "error" in resp, resp
+    return resp["error"]
+
+
 def test_initialize_returns_protocol_version() -> None:
     srv = _load_server()
     resp = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
@@ -914,24 +924,26 @@ def test_forge_pr_create_defaults_base_to_main(monkeypatch) -> None:
 
 
 def test_forge_pr_create_rejects_missing_repo() -> None:
+    """PR-13: missing required keys now surface as JSON-RPC -32602."""
     srv = _load_server()
-    payload = _call(srv, "forge.pr.create", {"head": "x", "title": "y"})
-    assert payload["ok"] is False
-    assert "repo is required" in payload["error"]
+    err = _call_for_error(srv, "forge.pr.create", {"head": "x", "title": "y"})
+    assert err["code"] == -32602
+    assert "repo" in err["message"]
+    assert "forge.pr.create" in err["message"]
 
 
 def test_forge_pr_create_rejects_missing_head() -> None:
     srv = _load_server()
-    payload = _call(srv, "forge.pr.create", {"repo": "a/b", "title": "y"})
-    assert payload["ok"] is False
-    assert "head is required" in payload["error"]
+    err = _call_for_error(srv, "forge.pr.create", {"repo": "a/b", "title": "y"})
+    assert err["code"] == -32602
+    assert "head" in err["message"]
 
 
 def test_forge_pr_create_rejects_missing_title() -> None:
     srv = _load_server()
-    payload = _call(srv, "forge.pr.create", {"repo": "a/b", "head": "x"})
-    assert payload["ok"] is False
-    assert "title is required" in payload["error"]
+    err = _call_for_error(srv, "forge.pr.create", {"repo": "a/b", "head": "x"})
+    assert err["code"] == -32602
+    assert "title" in err["message"]
 
 
 def test_pr5_chain_dashboard_url_into_forge_pr_body(
@@ -1195,3 +1207,128 @@ def test_verify_auto_fix_handles_non_utf8_bytes(tmp_path: Path) -> None:
     assert isinstance(result["mutations"], list)
     assert isinstance(result["findings_before"], list)
     assert isinstance(result["findings_after"], list)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-13 (gap G2) — JSON-RPC strict validation of inputSchema.required
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The smoke-test report flagged that the bridge previously let tool calls
+# through with missing required keys, leaving each handler to fail
+# gracefully on its own. PR-13 moves that validation into the JSON-RPC
+# dispatcher so the surface is consistent across all 29 tools and the
+# error envelope matches the MCP / JSON-RPC 2.0 spec (-32602 Invalid
+# params). The tests below pin that contract.
+
+
+def test_pr13_required_lookup_built_from_tool_schemas() -> None:
+    """The lookup must cover every tool that declares ``required`` keys."""
+    srv = _load_server()
+    lookup = srv._REQUIRED_BY_TOOL
+    # Spot-check a handful from each PR.
+    assert lookup["spec.from_prompt"] == ["prompt"]
+    assert lookup["spec.validate"] == ["spec"]
+    assert set(lookup["build.auto"]) == {"spec", "out_dir"}
+    assert lookup["discover.llm_context"] == ["mq5_path", "pattern"]
+    assert lookup["verify.backtest"] == ["xml_report_path"]
+    # Tools that have no required keys are still in the lookup with [].
+    assert lookup["discover.doctor"] == []
+
+
+def test_pr13_llm_context_missing_pattern_returns_minus_32602() -> None:
+    """The exact gap G2 from the smoke-test report.
+
+    Before PR-13: arguments={'mq5_path': '/tmp/x.mq5'} would hit
+    ``_tool_discover_llm_context`` with ``pattern=None`` → returned a
+    tool-local ``{ok: false, error: 'unknown pattern None'}`` envelope.
+    After PR-13: the server rejects the call before dispatch with a
+    proper JSON-RPC -32602 error.
+    """
+    srv = _load_server()
+    err = _call_for_error(
+        srv, "discover.llm_context", {"mq5_path": "/tmp/whatever.mq5"},
+    )
+    assert err["code"] == -32602
+    assert "pattern" in err["message"]
+    assert "discover.llm_context" in err["message"]
+
+
+def test_pr13_llm_context_missing_mq5_path_returns_minus_32602() -> None:
+    srv = _load_server()
+    err = _call_for_error(
+        srv, "discover.llm_context", {"pattern": "cloud-api"},
+    )
+    assert err["code"] == -32602
+    assert "mq5_path" in err["message"]
+
+
+def test_pr13_llm_context_missing_both_lists_both() -> None:
+    srv = _load_server()
+    err = _call_for_error(srv, "discover.llm_context", {})
+    assert err["code"] == -32602
+    # Order matches the schema's ``required`` list.
+    assert "mq5_path" in err["message"]
+    assert "pattern" in err["message"]
+
+
+def test_pr13_explicit_null_value_treated_as_missing() -> None:
+    """JSON ``null`` for a required key counts as missing.
+
+    JSON-RPC callers often send explicit ``null`` to indicate "no value"
+    — the dispatcher must catch this so the tool body never sees ``None``
+    for a declared-required field.
+    """
+    srv = _load_server()
+    err = _call_for_error(
+        srv, "spec.from_prompt", {"prompt": None},
+    )
+    assert err["code"] == -32602
+    assert "prompt" in err["message"]
+
+
+def test_pr13_empty_string_is_valid_for_required_field() -> None:
+    """Empty strings / zeros / empty lists are intentional values, not missing.
+
+    Only ``None`` / absent keys are treated as missing — empty values
+    are legitimate inputs some tools genuinely accept.
+    """
+    srv = _load_server()
+    # spec.from_prompt with prompt="" should still dispatch through;
+    # the parser handles blank prompts deterministically.
+    payload = _call(srv, "spec.from_prompt", {"prompt": ""})
+    # The parser opts into all-defaults for a blank prompt.
+    assert payload["ok"] is True
+    assert payload["spec"]["preset"] == "stdlib"
+
+
+def test_pr13_optional_keys_remain_optional() -> None:
+    """Required-key enforcement must not break optional arguments.
+
+    ``discover.scan`` declares no required keys at all, so calls with
+    zero arguments must continue to dispatch successfully (subject to
+    whatever the underlying tool does on disk).
+    """
+    srv = _load_server()
+    # Just need to confirm the dispatcher doesn't bail with -32602.
+    # The tool itself may still error on a missing workspace; we only
+    # care that the bridge layer accepted the call.
+    resp = srv.handle({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "discover.scan", "arguments": {}},
+    })
+    # Either a result (happy path) or a non--32602 tool error envelope.
+    if "error" in resp:
+        assert resp["error"]["code"] != -32602
+    else:
+        assert "result" in resp
+
+
+def test_pr13_unknown_tool_still_returns_minus_32601() -> None:
+    """The required-key check must not shadow the unknown-tool path."""
+    srv = _load_server()
+    resp = srv.handle({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "made.up.tool", "arguments": {}},
+    })
+    assert resp["error"]["code"] == -32601
+    assert "made.up.tool" in resp["error"]["message"]
