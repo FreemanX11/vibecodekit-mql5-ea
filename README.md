@@ -1,7 +1,7 @@
 # vibecodekit-mql5-ea
 
 [![version](https://img.shields.io/badge/version-v1.0.1-blue)](https://github.com/BuildMqlCodekit-01/vibecodekit-mql5-ea/releases/tag/v1.0.1)
-[![tests](https://img.shields.io/badge/tests-478%20passing-success)]()
+[![tests](https://img.shields.io/badge/tests-567%20passing-success)]()
 [![lint](https://img.shields.io/badge/ruff-clean-success)]()
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
@@ -9,7 +9,7 @@
 > Advisors on MetaTrader 5. **Fifty CLI commands** (including a
 > single-shot `mql5-auto-build` pipeline, an auto-fix loop for the eight
 > critical anti-patterns, a natural-language `mql5-spec-from-prompt`
-> parser, and a publishable quality-matrix dashboard), three MCP
+> parser, and a publishable quality-matrix dashboard), four MCP
 > servers, twenty-nine reference cheatsheets, twenty-three anti-pattern
 > detectors, and one fully worked 4-hour wizard-composable portfolio EA
 > — all delivered as a flat, router-free, fail-fast toolkit.
@@ -133,7 +133,7 @@ hot-spots:
 | **Ví dụ hoàn chỉnh** | `examples/ea-wizard-macd-sar-eurusd-h1-portfolio/` — turnaround 4 tiếng ở chế độ enterprise |
 | **Pipeline auto-build** | `mql5-spec-from-prompt` → `ea-spec.yaml` → `mql5-auto-build` (scan → build → lint → compile → permission-gate → dashboard) — 1 lệnh, JSON report idempotent, hook publish public URL tuỳ chọn |
 | **Môi trường reproducible** | `requirements.lock` (pip-compile pin chặt) + `Dockerfile.devin` (3 stage: base / wine / ci) |
-| **Test gate** | 478 test pass qua Phase 0/A/B/C/D/E |
+| **Test gate** | 567 test pass qua Phase 0/A/B/C/D/E |
 
 [^2]: `mt5-bridge` cần package `MetaTrader5` Python — chỉ cài được trên
     Windows hoặc Wine MT5 desktop. Trên Linux Devin VM, import fail và
