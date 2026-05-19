@@ -1359,7 +1359,7 @@ def _tool_verify_auto_fix(args: dict[str, Any]) -> dict[str, Any]:
         mq5_path = Path(raw_path).expanduser().resolve()
         if not mq5_path.exists():
             return {"ok": False, "error": f"path does not exist: {mq5_path}"}
-        original = mq5_path.read_text(encoding="utf-8")
+        original = mq5_path.read_text(encoding="utf-8", errors="replace")
         report = auto_fix_mod.fix_source(str(mq5_path), original)
         if report.fixed_text != original:
             mq5_path.write_text(report.fixed_text, encoding="utf-8")

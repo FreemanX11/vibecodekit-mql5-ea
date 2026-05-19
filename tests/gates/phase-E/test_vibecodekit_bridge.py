@@ -1167,3 +1167,31 @@ def test_pr7_chain_scan_into_auto_fix(tmp_path: Path) -> None:
     fix = _call(srv, "verify.auto_fix", {"path": str(chosen)})
     assert fix["ok"] is True
     assert fix["path"].endswith("TrendEA.mq5")
+
+
+def test_verify_auto_fix_handles_non_utf8_bytes(tmp_path: Path) -> None:
+    """MQL5 sources from MetaEditor on Windows often carry Windows-1252
+    bytes (©, ®, em-dash, accented identifiers). The kit's own
+    ``auto_fix.fix_file`` reads them with ``errors='replace'``; the
+    bridge tool must mirror that so an unhandled ``UnicodeDecodeError``
+    never reaches the JSON-RPC envelope.
+    """
+    mq5 = tmp_path / "WinEdited.mq5"
+    # Mix a Windows-1252 copyright sign (0xA9) and an em-dash (0x97)
+    # into an otherwise-valid EA — neither byte is legal UTF-8.
+    mq5.write_bytes(
+        b"//+------------------------------------------------------------------+\n"
+        b"//| Copyright \xa9 2025 Broker \x97 example.com                    |\n"
+        b"//+------------------------------------------------------------------+\n"
+        b"#include <Trade/Trade.mqh>\n"
+        b"CPipNormalizer pip;\n"
+        b"void OnTick() { double sl = 30 * 0.0001; }\n"
+    )
+    srv = _load_server()
+    result = _call(srv, "verify.auto_fix", {"path": str(mq5)})
+    # Must not crash and must still round-trip the standard shape.
+    assert result["ok"] is True, result
+    assert result["path"].endswith("WinEdited.mq5")
+    assert isinstance(result["mutations"], list)
+    assert isinstance(result["findings_before"], list)
+    assert isinstance(result["findings_after"], list)
