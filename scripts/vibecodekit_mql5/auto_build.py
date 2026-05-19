@@ -222,8 +222,11 @@ def run_pipeline(
 
     def _finalize(mq5: Path | None) -> PipelineReport:
         # Informational stages always run last and never flip pipeline ok.
-        _maybe_attach_dashboard(report, out_dir, skip=skip_dashboard,
-                                publish_cmd=publish_cmd)
+        _maybe_attach_dashboard(
+            report, out_dir, skip=skip_dashboard,
+            publish_cmd=publish_cmd,
+            skip_docs=skip_docs, docs_formats=docs_formats,
+        )
         docs_stage_mod.attach_docs(
             report, out_dir, skip=skip_docs, ea_spec=ea_spec,
             lang=docs_lang, formats=docs_formats, spec=spec, mq5_path=mq5,
@@ -279,21 +282,34 @@ def _maybe_attach_dashboard(
     *,
     skip: bool,
     publish_cmd: str | None,
+    skip_docs: bool = False,
+    docs_formats: tuple[str, ...] = (),
 ) -> None:
     """Render + publish the quality-matrix dashboard and stash it on report.
 
     Never raises; on failure the dashboard block records the error and the
     overall pipeline outcome is unchanged. The dashboard step is
     informational — a broken publish hook must not turn a green build red.
+
+    ``skip_docs`` + ``docs_formats`` describe what the docs stage is
+    *about* to write (it runs immediately after dashboard); the digest
+    promises those links in the embedded card so the dashboard does not
+    have to be re-rendered. If docs are skipped the card is omitted.
     """
     if skip:
         report.dashboard = {"skipped": True}
         return
     try:
+        name = str(report.spec.get("name", "ea"))
+        docs_links: dict[str, str] = {}
+        if not skip_docs:
+            for fmt in docs_formats:
+                docs_links[fmt] = f"{name}.docs.{fmt}"
         digest = dashboard_mod.PipelineDigest(
-            name=str(report.spec.get("name", "ea")),
+            name=name,
             ok=report.ok,
             stages=[s.to_dict() for s in report.stages],
+            docs_links=docs_links,
         )
         html_path = dashboard_mod.write_dashboard(digest, out_dir)
         location = dashboard_mod.publish(html_path, publish_cmd=publish_cmd)
@@ -332,7 +348,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--docs-lang", choices=("vi", "en"), default="vi",
                     help="language for generated docs (default: vi)")
     ap.add_argument("--docs-formats", default="html,md",
-                    help="comma-separated docs formats (html, md). Default: html,md")
+                    help="comma-separated docs formats (html, md, pdf). "
+                         "Default: html,md. pdf requires headless Chrome "
+                         "on PATH or $MQL5_CHROME_PATH.")
     ap.add_argument("--force", action="store_true",
                     help="overwrite existing output directory")
     args = ap.parse_args(argv)
@@ -346,16 +364,16 @@ def main(argv: list[str] | None = None) -> int:
 
     out_dir = args.out_dir or Path.cwd() / spec["name"]
     docs_formats_raw = {f.strip() for f in args.docs_formats.split(",") if f.strip()}
-    invalid_formats = docs_formats_raw - {"html", "md"}
+    invalid_formats = docs_formats_raw - {"html", "md", "pdf"}
     if invalid_formats:
         print(
             f"mql5-auto-build: unknown --docs-formats values: "
-            f"{sorted(invalid_formats)} (supported: html, md)",
+            f"{sorted(invalid_formats)} (supported: html, md, pdf)",
             file=sys.stderr,
         )
         return 2
     docs_formats = tuple(
-        f for f in ("html", "md") if f in docs_formats_raw
+        f for f in ("html", "md", "pdf") if f in docs_formats_raw
     )
     report = run_pipeline(
         spec,

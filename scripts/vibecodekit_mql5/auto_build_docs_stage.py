@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from . import ea_docs as ea_docs_mod
+from . import ea_docs_pdf as ea_docs_pdf_mod
 from . import spec_schema
 
 if TYPE_CHECKING:
@@ -87,12 +88,43 @@ def attach_docs(
                 ea_docs_mod.render_markdown(content), encoding="utf-8",
             )
             written["md"] = str(md_path)
+        pdf_error: str | None = None
+        if "pdf" in formats:
+            # PDF requires the HTML on disk — if the caller passed
+            # ``--docs-formats pdf`` without ``html``, render the HTML
+            # to a temp path and clean up after Chrome.
+            html_for_pdf = written.get("html")
+            keep_html = html_for_pdf is not None
+            if not html_for_pdf:
+                from .ea_docs_render import render_html_document
+
+                tmp_html = out_dir / f"{ea_spec.name}.docs.html"
+                tmp_html.write_text(
+                    render_html_document(content), encoding="utf-8",
+                )
+                html_for_pdf = str(tmp_html)
+            pdf_path = out_dir / f"{ea_spec.name}.docs.pdf"
+            ok = ea_docs_pdf_mod.render_pdf(Path(html_for_pdf), pdf_path)
+            if ok:
+                written["pdf"] = str(pdf_path)
+            else:
+                pdf_error = (
+                    "pdf render skipped: no headless-Chrome binary found "
+                    f"(set ${ea_docs_pdf_mod.ENV_CHROME_PATH} to override)"
+                )
+            if not keep_html:
+                try:
+                    Path(html_for_pdf).unlink()
+                except OSError:
+                    pass
         report.docs = {
             "ok": True,
             "lang": lang,
             "formats": list(formats),
             "outputs": written,
         }
+        if pdf_error:
+            report.docs["pdf_error"] = pdf_error
     except (OSError, ValueError) as exc:
         # Same rationale as the dashboard guard — informational stage,
         # never red-list a green build.

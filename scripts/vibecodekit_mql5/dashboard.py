@@ -185,6 +185,12 @@ class PipelineDigest:
     ok: bool
     stages: list[dict[str, object]] = field(default_factory=list)
     matrix_inputs: dict[str, dict[str, str]] = field(default_factory=dict)
+    # PR-18: relative filenames for the EA docs that the pipeline
+    # promises will land in the same directory as quality-matrix.html.
+    # Keys are formats ("html", "md", "pdf"); empty dict means the
+    # docs stage is being skipped and the dashboard should NOT render
+    # an embed card.
+    docs_links: dict[str, str] = field(default_factory=dict)
 
 
 _STAGE_TO_CELL: tuple[tuple[str, tuple[str, str]], ...] = (
@@ -208,6 +214,11 @@ def render_from_pipeline(digest: PipelineDigest) -> str:
     Cells touched by pipeline stages are filled from the stage results;
     everything else stays N/A (or honours ``digest.matrix_inputs`` when
     the caller has run a fuller RRI evaluation separately).
+
+    When ``digest.docs_links`` is populated, a styled EA Docs card is
+    appended after the matrix linking to the sibling ``<EAName>.docs.*``
+    files written by the docs stage. The card is purely informational
+    (relative ``<a href>`` links opened from disk).
     """
     matrix = matrix_mod.populate_from_inputs(digest.matrix_inputs)
     for stage in digest.stages:
@@ -222,7 +233,58 @@ def render_from_pipeline(digest: PipelineDigest) -> str:
         )
         note = name
         matrix.set(dim, axis, status, note)
-    return matrix_mod.render_html(matrix)
+    body = matrix_mod.render_html(matrix)
+    embed = _render_docs_embed(digest.name, digest.docs_links)
+    if embed:
+        # Inject before </body> so the card shows under the matrix
+        # without disturbing the existing markup contract.
+        body = body.replace("</body>", f"{embed}</body>", 1)
+    return body
+
+
+_DOCS_FORMAT_LABELS: dict[str, str] = {
+    "html": "Open HTML (browser)",
+    "pdf": "Download PDF",
+    "md": "View Markdown source",
+}
+
+
+def _render_docs_embed(ea_name: str, links: dict[str, str]) -> str:
+    """Render the Neo-Retro Dev Deck docs card or empty string.
+
+    ``links`` maps format → relative filename (e.g. ``{'html':
+    'MyEA.docs.html'}``). Empty dict (docs skipped) renders nothing
+    so the dashboard contract stays back-compat.
+    """
+    from html import escape
+
+    if not links:
+        return ""
+    items = []
+    for fmt in ("html", "pdf", "md"):
+        href = links.get(fmt)
+        if not href:
+            continue
+        label = _DOCS_FORMAT_LABELS.get(fmt, fmt)
+        items.append(
+            f'<li><a href="{escape(href)}">{escape(label)}</a> '
+            f'<small>({escape(fmt)})</small></li>'
+        )
+    if not items:
+        return ""
+    return (
+        '<section class="ea-docs-embed" style="'
+        'margin-top:24px;padding:16px;border:4px solid #000;'
+        'background:#FFD600;color:#000;font-family:sans-serif;'
+        'max-width:720px">'
+        f'<h2 style="margin:0 0 8px 0">{escape(ea_name)} — EA Docs</h2>'
+        '<p style="margin:0 0 12px 0;font-size:14px">'
+        'Auto-generated user guide for this build. '
+        'Open the HTML in a browser, share the PDF, or diff the '
+        'Markdown source on git.</p>'
+        f'<ul style="margin:0;padding-left:20px">{"".join(items)}</ul>'
+        '</section>'
+    )
 
 
 def write_dashboard(digest: PipelineDigest, out_dir: Path) -> Path:
