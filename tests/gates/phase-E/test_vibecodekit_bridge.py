@@ -633,3 +633,143 @@ def test_verify_overfit_rejects_non_numeric() -> None:
     })
     assert payload["ok"] is False
     assert "must be numbers" in payload["error"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-4: review personas + generic RRI
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_tools_list_includes_pr4_review_tools() -> None:
+    srv = _load_server()
+    resp = srv.handle({"jsonrpc": "2.0", "id": 100, "method": "tools/list"})
+    names = {t["name"] for t in resp["result"]["tools"]}
+    assert {
+        "review.eng", "review.cso", "review.ceo",
+        "review.investigate", "rri.persona",
+    } <= names
+    # PR-1 + PR-2 + PR-3 + PR-4 = 23 tools total. Use >= to allow future PRs.
+    assert len(names) >= 23
+
+
+def test_review_eng_default_steps_and_personas() -> None:
+    srv = _load_server()
+    payload = _call(srv, "review.eng", {"mode": "personal"})
+    assert payload["ok"] is True
+    assert payload["mode"] == "personal"
+    assert payload["personas"] == ["broker-engineer", "devops"]
+    assert payload["steps"] == ["build", "verify"]
+    md = payload["markdown"]
+    assert "# Engineering review" in md
+    assert "broker-engineer" in md
+    assert "## Step templates" in md
+
+
+def test_review_eng_custom_steps() -> None:
+    srv = _load_server()
+    payload = _call(srv, "review.eng", {"mode": "team", "steps": ["verify"]})
+    assert payload["ok"] is True
+    assert payload["steps"] == ["verify"]
+    assert payload["mode"] == "team"
+
+
+def test_review_eng_rejects_unknown_mode() -> None:
+    srv = _load_server()
+    payload = _call(srv, "review.eng", {"mode": "godmode"})
+    assert payload["ok"] is False
+    assert "mode must be one of" in payload["error"]
+
+
+def test_review_eng_rejects_unknown_step() -> None:
+    srv = _load_server()
+    payload = _call(srv, "review.eng", {"steps": ["scan", "warp-drive"]})
+    assert payload["ok"] is False
+    assert "warp-drive" in payload["error"]
+
+
+def test_review_cso_single_persona() -> None:
+    srv = _load_server()
+    payload = _call(srv, "review.cso", {"mode": "enterprise"})
+    assert payload["ok"] is True
+    assert payload["personas"] == ["risk-auditor"]
+    assert payload["mode"] == "enterprise"
+    assert payload["steps"] == ["rri", "verify"]
+    assert "Chief Safety Officer review" in payload["markdown"]
+
+
+def test_review_ceo_default_steps() -> None:
+    srv = _load_server()
+    payload = _call(srv, "review.ceo", {})  # all defaults
+    assert payload["ok"] is True
+    assert payload["mode"] == "personal"
+    assert payload["personas"] == ["trader", "strategy-architect"]
+    assert payload["steps"] == ["vision", "refine"]
+
+
+def test_review_investigate_default_steps() -> None:
+    srv = _load_server()
+    payload = _call(srv, "review.investigate", {"mode": "team"})
+    assert payload["ok"] is True
+    assert payload["personas"] == ["perf-analyst", "strategy-architect"]
+    assert payload["steps"] == ["scan", "rri"]
+    assert "## Hypotheses" in payload["markdown"]
+
+
+def test_rri_persona_lists_available_when_omitted() -> None:
+    srv = _load_server()
+    payload = _call(srv, "rri.persona", {})
+    assert payload["ok"] is True
+    assert "trader" in payload["available_personas"]
+    assert len(payload["available_personas"]) == 6
+    assert "verify" in payload["available_steps"]
+    assert len(payload["available_steps"]) == 8
+    assert payload["available_modes"] == ["personal", "team", "enterprise"]
+
+
+def test_rri_persona_renders_trader_verify_personal() -> None:
+    srv = _load_server()
+    payload = _call(srv, "rri.persona", {
+        "persona": "trader", "step": "verify", "mode": "personal",
+    })
+    assert payload["ok"] is True
+    assert payload["persona"] == "trader"
+    assert payload["step"] == "verify"
+    assert payload["mode"] == "personal"
+    md = payload["markdown"]
+    assert "persona: trader" in md
+    assert "step: verify" in md
+    assert "## Step template" in md
+
+
+def test_rri_persona_defaults_step_to_verify() -> None:
+    srv = _load_server()
+    payload = _call(srv, "rri.persona", {"persona": "risk-auditor"})
+    assert payload["ok"] is True
+    assert payload["step"] == "verify"
+    assert payload["mode"] == "personal"
+
+
+def test_rri_persona_rejects_unknown_persona() -> None:
+    srv = _load_server()
+    payload = _call(srv, "rri.persona", {"persona": "ceo"})
+    assert payload["ok"] is False
+    assert "unknown persona" in payload["error"]
+
+
+def test_rri_persona_rejects_unknown_step() -> None:
+    srv = _load_server()
+    payload = _call(srv, "rri.persona", {"persona": "trader", "step": "warp"})
+    assert payload["ok"] is False
+    assert "unknown step" in payload["error"]
+
+
+def test_rri_persona_enterprise_has_more_questions_than_personal() -> None:
+    srv = _load_server()
+    personal = _call(srv, "rri.persona", {
+        "persona": "trader", "mode": "personal",
+    })["markdown"]
+    enterprise = _call(srv, "rri.persona", {
+        "persona": "trader", "mode": "enterprise",
+    })["markdown"]
+    # enterprise mode = 25 q vs personal = 5 q per persona
+    assert enterprise.count("- [ ] **") > personal.count("- [ ] **")
