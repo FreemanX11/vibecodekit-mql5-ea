@@ -489,7 +489,7 @@ path với forward slash hoặc escaped backslash.
 | metaeditor-bridge | 3 | `metaeditor.compile`, `metaeditor.parse_log`, `metaeditor.includes_resolve` | `METAEDITOR_BIN` (optional) |
 | mt5-bridge | 10 (chỉ-đọc) | `mt5.symbols.list`, `mt5.symbol.info`, `mt5.rates.copy`, `mt5.tick.last`, `mt5.account.info`, `mt5.terminal.info`, `mt5.positions.list`, `mt5.positions.history`, `mt5.history.deals`, `mt5.market.book` | MT5 desktop chạy + login (Windows/Wine) |
 | algo-forge-bridge | 6 | `forge.init`, `forge.clone`, `forge.commit`, `forge.pr.create`, `forge.pr.list`, `forge.repo.list` | `ALGO_FORGE_API_KEY` |
-| vibecodekit-bridge | 25 | `spec.from_prompt`, `spec.validate`, `build.auto`, `verify.{permission,lint,lint_best_practice,method_hiding,trader17,compile,broker_safety,audit,backtest,walkforward,montecarlo,multibroker,fitness,mfe_mae,overfit}`, `review.{eng,cso,ceo,investigate}`, `rri.persona`, `dashboard.publish`, `forge.pr.create` | (hermetic; `MQL5_FORGE_TOKEN` only for real-mode `forge.pr.create`, `MQL5_DASHBOARD_PUBLISH_CMD` for `dashboard.publish` upload) |
+| vibecodekit-bridge | 29 | `spec.from_prompt`, `spec.validate`, `build.auto`, `verify.{permission,lint,lint_best_practice,method_hiding,trader17,compile,broker_safety,audit,backtest,walkforward,montecarlo,multibroker,fitness,mfe_mae,overfit,auto_fix}`, `review.{eng,cso,ceo,investigate}`, `rri.persona`, `dashboard.publish`, `forge.pr.create`, `discover.{doctor,scan,llm_context}` | (hermetic; `MQL5_FORGE_TOKEN` only for real-mode `forge.pr.create`, `MQL5_DASHBOARD_PUBLISH_CMD` for `dashboard.publish` upload) |
 
 ### Tại sao mt5-bridge READ-ONLY?
 

@@ -486,9 +486,9 @@ ALGO_FORGE_API_KEY=xxx python mcp/algo-forge-bridge/server.py
 
 ### 5.4. vibecodekit-bridge
 
-25 tool qua 5 PR. Cho phép AI coding agent (Codex CLI / Claude Code /
+29 tool qua 6 PR. Cho phép AI coding agent (Codex CLI / Claude Code /
 Cursor / Devin / Claude Desktop) gọi thẳng vào pipeline `prompt → spec
-→ build → verify → permission gate` qua JSON-RPC. Wire format ổn định
+→ build → verify → review → ship` qua JSON-RPC. Wire format ổn định
 giữa các PR — PR sau chỉ mở rộng `DISPATCH`.
 
 **PR-1 (prompt → spec → build → permission gate):**
@@ -526,12 +526,25 @@ FTMO/MFF), `time_exit` (close on Friday, max trade hours, session
 windows), `stealth` (random slippage / comment pool / lot jitter,
 split orders). Spec cũ không có các block này vẫn validate như cũ.
 
+**PR-7 (discovery / fix-loop helpers):** `discover.doctor` chạy
+doctor của kit (Python / Wine / MetaEditor / module + scaffold bắt
+buộc), `discover.scan` quét workspace và phân loại theo extension
+(`.mq5` → ea-source, `.mqh` → include, `.set` → tester-set, `.ex5`
+→ compiled, `.onnx` → onnx-model), `discover.llm_context` wire 1
+trong 3 LLM-bridge scaffold pattern (`cloud-api` / `self-hosted-
+ollama` / `embedded-onnx-llm`) vào EA `.mq5` có sẵn, và
+`verify.auto_fix` chạy AP auto-fixer trên file (rewrite in-place)
+hoặc trên source string in-memory. Pair `verify.lint` ↔
+`verify.auto_fix` để đóng fix-loop cho agent mà không cần rời
+bridge.
+
 ```bash
 python mcp/vibecodekit-bridge/server.py
 ```
 
-PR tiếp theo sẽ thêm các tool backtest/walkforward/MC/multibroker
-/fitness, review persona, và `dashboard.publish`.
+Wire format ổn định từ PR-1 → PR-5 → PR-7. PR sau (PR-8: schema
+mở rộng 5 block còn lại — `trailing`, `partial_close`, `correlation`,
+`swap_filter`, `logs` — đang plan) sẽ giữ nguyên surface bridge.
 
 
 ### 5.5. Cấu hình MCP client

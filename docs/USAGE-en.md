@@ -419,9 +419,9 @@ ALGO_FORGE_API_KEY=xxx python mcp/algo-forge-bridge/server.py
 
 ### 5.4. vibecodekit-bridge
 
-25 tools across five PRs. Lets an AI coding agent (Codex CLI / Claude
+29 tools across six PRs. Lets an AI coding agent (Codex CLI / Claude
 Code / Cursor / Devin / Claude Desktop) drive the full `prompt → spec
-→ build → verify → permission-gate` loop via JSON-RPC. The wire format
+→ build → verify → review → ship` loop via JSON-RPC. The wire format
 is stable across PRs — future ones extend `DISPATCH` without breaking
 clients.
 
@@ -461,6 +461,18 @@ on `ea-spec.yaml` — `prop_firm` (FTMO/MFF DD limits + news block +
 weekend-flat), `time_exit` (Friday close, max trade duration, session
 windows), `stealth` (slippage / comment / lot-jitter randomisation,
 split orders). Specs that don't supply them validate unchanged.
+
+**PR-7 (discovery / fix-loop helpers):** `discover.doctor` runs the
+kit's environment doctor (Python / Wine / MetaEditor / required
+modules + scaffolds), `discover.scan` inventories a workspace tree
+and classifies files by extension (`.mq5` → ea-source, `.mqh` →
+include, `.set` → tester-set, `.ex5` → compiled, `.onnx` →
+onnx-model), `discover.llm_context` wires one of the 3 LLM-bridge
+scaffold patterns (`cloud-api` / `self-hosted-ollama` /
+`embedded-onnx-llm`) into an existing EA `.mq5`, and
+`verify.auto_fix` runs the AP auto-fixer over a file (in-place) or
+an in-memory source string. Pair `verify.lint` ↔ `verify.auto_fix`
+to close the agent's fix loop without leaving the bridge.
 
 ```bash
 python mcp/vibecodekit-bridge/server.py

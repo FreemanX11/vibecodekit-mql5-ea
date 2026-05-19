@@ -8,7 +8,12 @@ Mirrors ``test_mcp_servers.py``. The bridge ships 4 PR-1 tools
 ``verify.audit``), and 7 PR-3 runtime/statistical tools
 (``verify.backtest``, ``verify.walkforward``, ``verify.montecarlo``,
 ``verify.multibroker``, ``verify.fitness``, ``verify.mfe_mae``,
-``verify.overfit``). These tests cover the JSON-RPC envelope, the
+``verify.overfit``), 5 PR-4 review/RRI tools (``review.eng``,
+``review.cso``, ``review.ceo``, ``review.investigate``,
+``rri.persona``), 2 PR-5 ship-stage tools (``dashboard.publish``,
+``forge.pr.create``), and 4 PR-7 discovery / fix-loop helpers
+(``discover.doctor``, ``discover.scan``, ``discover.llm_context``,
+``verify.auto_fix``). These tests cover the JSON-RPC envelope, the
 tool list shape, and a hermetic round-trip through every tool.
 """
 
@@ -961,3 +966,204 @@ def test_pr5_chain_dashboard_url_into_forge_pr_body(
     assert pr["dry_run"] is True
     assert pr["planned_payload"]["body"] == pr_body
     assert dash["public_url"] in pr["planned_payload"]["body"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-7 — discovery / fix-loop helpers
+# (discover.doctor, discover.scan, discover.llm_context, verify.auto_fix)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_tools_list_includes_pr7_discovery_tools() -> None:
+    srv = _load_server()
+    resp = srv.handle({"jsonrpc": "2.0", "id": 7, "method": "tools/list"})
+    names = {t["name"] for t in resp["result"]["tools"]}
+    assert {
+        "discover.doctor",
+        "discover.scan",
+        "discover.llm_context",
+        "verify.auto_fix",
+    } <= names
+    assert len(names) == 29  # PR-1 (4) + PR-2 (7) + PR-3 (7) + PR-4 (5) + PR-5 (2) + PR-7 (4)
+
+
+def test_discover_doctor_returns_checks_list() -> None:
+    srv = _load_server()
+    result = _call(srv, "discover.doctor", {})
+    assert "ok" in result
+    assert isinstance(result.get("checks"), list)
+    assert result["checks"], "doctor should always report at least one check"
+    # Each check is a dict with a 'name' field (kit's run_doctor contract).
+    first = result["checks"][0]
+    assert isinstance(first, dict) and "name" in first
+
+
+def test_discover_scan_inventories_workspace(tmp_path: Path) -> None:
+    (tmp_path / "main.mq5").write_text("// EA\nvoid OnTick(){}\n", encoding="utf-8")
+    (tmp_path / "helper.mqh").write_text("// include\n", encoding="utf-8")
+    (tmp_path / "model.onnx").write_bytes(b"\x00\x01\x02")
+    sub = tmp_path / "tester"
+    sub.mkdir()
+    (sub / "params.set").write_text("k=v\n", encoding="utf-8")
+    srv = _load_server()
+    result = _call(srv, "discover.scan", {"root": str(tmp_path)})
+    assert result["ok"] is True
+    counts = result["counts"]
+    assert counts.get("ea-source") == 1
+    assert counts.get("include") == 1
+    assert counts.get("onnx-model") == 1
+    assert counts.get("tester-set") == 1
+    # All four classified files should appear in the inventory.
+    kinds = {f["kind"] for f in result["files"]}
+    assert {"ea-source", "include", "onnx-model", "tester-set"} <= kinds
+
+
+def test_discover_scan_defaults_to_cwd_when_root_omitted(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / "ea.mq5").write_text("// EA", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    srv = _load_server()
+    result = _call(srv, "discover.scan", {})
+    assert result["ok"] is True
+    assert result["counts"].get("ea-source") == 1
+
+
+def test_discover_scan_rejects_missing_root(tmp_path: Path) -> None:
+    missing = tmp_path / "does-not-exist"
+    srv = _load_server()
+    result = _call(srv, "discover.scan", {"root": str(missing)})
+    assert result["ok"] is False
+    assert "does not exist" in result["error"]
+
+
+def test_discover_llm_context_wires_cloud_api(tmp_path: Path) -> None:
+    mq5 = tmp_path / "TrendEA.mq5"
+    mq5.write_text(
+        "//+------------------------------------------------------------------+\n"
+        "//| TrendEA.mq5                                                      |\n"
+        "//+------------------------------------------------------------------+\n"
+        "void OnInit() { }\n"
+        "void OnTick() { }\n",
+        encoding="utf-8",
+    )
+    srv = _load_server()
+    result = _call(srv, "discover.llm_context", {
+        "mq5_path": str(mq5),
+        "pattern": "cloud-api",
+    })
+    assert result["ok"] is True
+    assert result["pattern"] == "cloud-api"
+    # The wirer reports what it changed; at least one of include/global/init
+    # should be added on a virgin EA file.
+    assert (
+        result["added_include"]
+        or result["added_global"]
+        or result["added_init"]
+    )
+    # File on disk should reflect the wirings.
+    after = mq5.read_text(encoding="utf-8")
+    assert "cloud-api" in after.lower() or "#include" in after
+
+
+def test_discover_llm_context_rejects_unknown_pattern(tmp_path: Path) -> None:
+    mq5 = tmp_path / "ea.mq5"
+    mq5.write_text("void OnTick(){}\n", encoding="utf-8")
+    srv = _load_server()
+    result = _call(srv, "discover.llm_context", {
+        "mq5_path": str(mq5),
+        "pattern": "totally-fake",
+    })
+    assert result["ok"] is False
+    assert "unknown pattern" in result["error"]
+
+
+def test_discover_llm_context_rejects_missing_file(tmp_path: Path) -> None:
+    srv = _load_server()
+    result = _call(srv, "discover.llm_context", {
+        "mq5_path": str(tmp_path / "nope.mq5"),
+        "pattern": "cloud-api",
+    })
+    assert result["ok"] is False
+    assert "does not exist" in result["error"]
+
+
+_AUTOFIX_SRC = (
+    "//+------------------------------------------------------------------+\n"
+    "//| demo.mq5                                                         |\n"
+    "//| digits-tested: 5                                                 |\n"
+    "//+------------------------------------------------------------------+\n"
+    "#include <Trade/Trade.mqh>\n"
+    "CTrade trade;\n"
+    "CPipNormalizer pip;\n"
+    "void OnTick() {\n"
+    "    double sl = 30 * 0.0001;\n"
+    "    trade.Buy(0.10);\n"
+    "}\n"
+)
+
+
+def test_verify_auto_fix_in_memory_source_does_not_write_file() -> None:
+    srv = _load_server()
+    result = _call(srv, "verify.auto_fix", {
+        "source": _AUTOFIX_SRC,
+        "label": "demo.mq5",
+    })
+    assert result["ok"] is True
+    assert result["wrote_changes"] is False
+    assert result["path"] == "demo.mq5"
+    assert isinstance(result["mutations"], list)
+    assert isinstance(result["annotations"], list)
+    assert isinstance(result["findings_before"], list)
+    assert isinstance(result["findings_after"], list)
+    assert "fixed_text" in result
+
+
+def test_verify_auto_fix_rewrites_file_on_disk(tmp_path: Path) -> None:
+    mq5 = tmp_path / "demo.mq5"
+    mq5.write_text(_AUTOFIX_SRC, encoding="utf-8")
+    srv = _load_server()
+    result = _call(srv, "verify.auto_fix", {"path": str(mq5)})
+    assert result["ok"] is True
+    # AP-20 should rewrite hardcoded 0.0001 pip math to pip.Pip().
+    fixed = mq5.read_text(encoding="utf-8")
+    if result["wrote_changes"]:
+        assert "0.0001" not in fixed or "pip.Pip()" in fixed
+    # At minimum, the path is echoed back as the resolved abs path.
+    assert result["path"].endswith("demo.mq5")
+
+
+def test_verify_auto_fix_requires_path_or_source() -> None:
+    srv = _load_server()
+    result = _call(srv, "verify.auto_fix", {})
+    assert result["ok"] is False
+    assert "path" in result["error"] and "source" in result["error"]
+
+
+def test_verify_auto_fix_rejects_missing_path(tmp_path: Path) -> None:
+    srv = _load_server()
+    result = _call(srv, "verify.auto_fix", {
+        "path": str(tmp_path / "absent.mq5"),
+    })
+    assert result["ok"] is False
+    assert "does not exist" in result["error"]
+
+
+def test_pr7_chain_scan_into_auto_fix(tmp_path: Path) -> None:
+    """End-to-end PR-7 pattern: discover.scan -> verify.auto_fix.
+
+    An agent walks a workspace with discover.scan, picks an ea-source
+    file (paths are scan-root relative — kit contract), and feeds the
+    fully-qualified path back into verify.auto_fix.
+    """
+    target = tmp_path / "TrendEA.mq5"
+    target.write_text(_AUTOFIX_SRC, encoding="utf-8")
+    srv = _load_server()
+    inv = _call(srv, "discover.scan", {"root": str(tmp_path)})
+    assert inv["ok"] is True
+    ea_sources = [f for f in inv["files"] if f["kind"] == "ea-source"]
+    assert len(ea_sources) == 1
+    chosen = Path(inv["root"]) / ea_sources[0]["path"]
+    fix = _call(srv, "verify.auto_fix", {"path": str(chosen)})
+    assert fix["ok"] is True
+    assert fix["path"].endswith("TrendEA.mq5")

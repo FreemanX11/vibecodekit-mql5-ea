@@ -88,9 +88,23 @@ existing scaffolds continue to render exactly as before. Templates
 that *do* want to consume these blocks can read them from the
 normalised `EaSpec` dataclass.
 
-All five plan-β rút gọn milestones are now in `DISPATCH`. The wire
-format is unchanged across PR-1 → PR-5 and stays stable for future
-extensions.
+### PR-7: discovery / fix-loop helpers (4 tools)
+
+Give an AI agent the two things it always asks first — *"what's in
+this repo?"* and *"how do I fix the lint errors I just got?"* —
+without leaving the bridge. All four tools are hermetic (no
+Wine / no network).
+
+| Tool | Wraps | One-line purpose |
+|------|-------|------------------|
+| `discover.doctor` | `vibecodekit_mql5.doctor.run_doctor` | Run the kit's environment doctor — checks Python version, Wine / MetaEditor, required modules, required scaffolds, and basic git posture. Returns `{ok, checks: [{name, status, detail}, …]}`. |
+| `discover.scan`   | `vibecodekit_mql5.scan.scan_tree`    | Walk a workspace tree, classify by extension (`.mq5` → `ea-source`, `.mqh` → `include`, `.set` → `tester-set`, `.ex5` → `compiled`, `.onnx` → `onnx-model`), return `{root, files: [{path, kind, size}, …], counts: {kind: n, …}}`. Paths are root-relative. |
+| `discover.llm_context` | `vibecodekit_mql5.llm_context.wire_llm` | Wire one of the 3 LLM-bridge scaffold patterns (`cloud-api`, `self-hosted-ollama`, `embedded-onnx-llm`) into an existing EA `.mq5` — adds the right `#include` / global instance / `OnInit()` init call. Mutates the file in place. |
+| `verify.auto_fix` | `vibecodekit_mql5.auto_fix.fix_source` | Run the AP auto-fixer over an EA source. Pass `path` (file is rewritten) or `source` (in-memory). Returns `{ok, path, wrote_changes, mutations, annotations, findings_before, findings_after, fixed_text}`. Designed to chain with `verify.lint`: lint → see findings → auto_fix → lint again. |
+
+All six plan-β rút gọn milestones (PR-1 → PR-5, then PR-7) are now
+in `DISPATCH`. The wire format is unchanged across all of them and
+stays stable for future extensions.
 
 ## Launch directly
 

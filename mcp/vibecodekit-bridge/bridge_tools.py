@@ -19,7 +19,10 @@ RRI suite (``review.eng`` + ``review.cso`` + ``review.ceo`` +
 ``review.investigate`` + ``rri.persona``). PR-5 adds the ship-stage
 tools (``dashboard.publish`` + ``forge.pr.create``) — the final
 link in the kit's prompt → spec → build → verify → review → ship
-loop over MCP.
+loop over MCP. PR-7 adds the discovery / fix-loop helpers
+(``discover.doctor`` + ``discover.scan`` + ``discover.llm_context``
++ ``verify.auto_fix``) so agents can self-orient in a fresh
+workspace and run the AP auto-fixer without leaving the bridge.
 """
 
 from __future__ import annotations
@@ -32,17 +35,21 @@ from typing import Any
 from vibecodekit_mql5 import (
     audit as audit_mod,
     auto_build,
+    auto_fix as auto_fix_mod,
     backtest as backtest_mod,
     broker_safety as broker_safety_mod,
     compile as compile_mod,
+    doctor as doctor_mod,
     fitness as fitness_mod,
     lint as lint_mod,
     lint_best_practice as lint_bp_mod,
+    llm_context as llm_context_mod,
     method_hiding_check as method_hiding_mod,
     mfe_mae as mfe_mae_mod,
     monte_carlo as monte_carlo_mod,
     multibroker as multibroker_mod,
     overfit_check as overfit_mod,
+    scan as scan_mod,
     spec_from_prompt,
     spec_schema,
     trader_check as trader_check_mod,
@@ -628,6 +635,99 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "required": [],
         },
     },
+    # ─────────────────────────────────────────────────────────────────────
+    # PR-7 — discovery / fix-loop helpers.
+    # ─────────────────────────────────────────────────────────────────────
+    {
+        "name": "discover.doctor",
+        "description": (
+            "Run the kit's environment doctor — checks Python version, "
+            "Wine/MetaEditor availability, required modules, required "
+            "scaffolds, and basic git posture. Hermetic; safe to call "
+            "from any agent before kicking off a build. Returns "
+            "{ok, checks: [{name, status, detail}, …]}."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "discover.scan",
+        "description": (
+            "Inventory a workspace root: walks the tree, classifies "
+            "files by extension into kit-known kinds (ea-source for "
+            ".mq5, include for .mqh, tester-set for .set, compiled "
+            "for .ex5, onnx-model for .onnx), and returns {root, "
+            "files: [{path, kind, size}, …], counts: {kind: n, …}}. "
+            "Paths in 'files' are relative to 'root'. Use this first "
+            "when an agent opens an unfamiliar repo."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "root": {
+                    "type": "string",
+                    "description": "Directory to scan (default: current working dir).",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "discover.llm_context",
+        "description": (
+            "Wire one of the three LLM-bridge patterns (cloud-api, "
+            "self-hosted-ollama, embedded-onnx-llm) into an existing "
+            "EA .mq5 source — adds the right #include / global instance "
+            "/ OnInit() init call. Mutates the file in place. Returns "
+            "{ok, mq5_path, pattern, added_include, added_global, "
+            "added_init, notes}."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mq5_path": {
+                    "type": "string",
+                    "description": "Path to the .mq5 EA source to wire.",
+                },
+                "pattern": {
+                    "type": "string",
+                    "enum": list(llm_context_mod.PATTERNS),
+                    "description": "Which LLM-bridge scaffold pattern to wire in.",
+                },
+            },
+            "required": ["mq5_path", "pattern"],
+        },
+    },
+    {
+        "name": "verify.auto_fix",
+        "description": (
+            "Run the AP auto-fixer over one EA source. Either pass "
+            "'path' to fix a file on disk (file is rewritten) or "
+            "'source' to fix an in-memory string (file is not "
+            "touched). Returns {ok, path, mutations: [...], "
+            "annotations: [...], findings_before: [...], "
+            "findings_after: [...], fixed_text}. Pairs naturally with "
+            "verify.lint — agents call lint, see findings, call "
+            "auto_fix, call lint again."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the .mq5 source to fix in place.",
+                },
+                "source": {
+                    "type": "string",
+                    "description": "In-memory MQL5 source. When provided, 'path' is treated as a label only and the file is not written.",
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Label used when 'source' is given without 'path' (defaults to '<memory>').",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -1171,6 +1271,114 @@ def _tool_rri_persona(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-7 — discovery / fix-loop helpers.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _tool_discover_doctor(args: dict[str, Any]) -> dict[str, Any]:
+    """Run the kit's environment doctor (hermetic; no Wine/network needed)."""
+    report = doctor_mod.run_doctor()
+    return {
+        "ok": bool(report.ok),
+        "checks": list(report.checks),
+    }
+
+
+def _tool_discover_scan(args: dict[str, Any]) -> dict[str, Any]:
+    """Inventory a workspace root (extension → kit-known kind)."""
+    raw = args.get("root")
+    root = Path(raw).expanduser().resolve() if raw else Path.cwd().resolve()
+    if not root.exists():
+        return {"ok": False, "error": f"root does not exist: {root}"}
+    if not root.is_dir():
+        return {"ok": False, "error": f"root is not a directory: {root}"}
+    report = scan_mod.scan_tree(root)
+    return {
+        "ok": True,
+        "root": report.root,
+        "files": list(report.files),
+        "counts": dict(report.counts),
+    }
+
+
+def _tool_discover_llm_context(args: dict[str, Any]) -> dict[str, Any]:
+    """Wire an LLM-bridge scaffold pattern into an existing EA .mq5 file."""
+    raw_path = args.get("mq5_path")
+    if not raw_path:
+        return {"ok": False, "error": "mq5_path is required"}
+    pattern = args.get("pattern")
+    if pattern not in llm_context_mod.PATTERNS:
+        return {
+            "ok": False,
+            "error": (
+                f"unknown pattern {pattern!r} "
+                f"(valid: {list(llm_context_mod.PATTERNS)})"
+            ),
+        }
+    mq5_path = Path(raw_path).expanduser().resolve()
+    if not mq5_path.exists():
+        return {"ok": False, "error": f"mq5_path does not exist: {mq5_path}"}
+    report = llm_context_mod.wire_llm(mq5_path, pattern)
+    return {
+        "ok": bool(report.ok),
+        "mq5_path": report.mq5_path,
+        "pattern": report.pattern,
+        "added_include": bool(report.added_include),
+        "added_global": bool(report.added_global),
+        "added_init": bool(report.added_init),
+        "notes": list(report.notes),
+    }
+
+
+def _findings_to_dicts(findings: list[Any]) -> list[dict[str, Any]]:
+    """Best-effort serialisation of lint.Finding dataclasses."""
+    out: list[dict[str, Any]] = []
+    for f in findings or []:
+        if hasattr(f, "__dataclass_fields__"):
+            out.append({k: getattr(f, k) for k in f.__dataclass_fields__})
+        elif isinstance(f, dict):
+            out.append(dict(f))
+        else:
+            out.append({"repr": repr(f)})
+    return out
+
+
+def _tool_verify_auto_fix(args: dict[str, Any]) -> dict[str, Any]:
+    """Run the AP auto-fixer over one file or in-memory source."""
+    src = args.get("source")
+    raw_path = args.get("path")
+    if src is None and not raw_path:
+        return {"ok": False, "error": "either 'path' or 'source' is required"}
+    if src is not None:
+        label = raw_path or args.get("label") or "<memory>"
+        report = auto_fix_mod.fix_source(str(label), src)
+        path_repr = str(label)
+        wrote = False
+    else:
+        mq5_path = Path(raw_path).expanduser().resolve()
+        if not mq5_path.exists():
+            return {"ok": False, "error": f"path does not exist: {mq5_path}"}
+        original = mq5_path.read_text(encoding="utf-8")
+        report = auto_fix_mod.fix_source(str(mq5_path), original)
+        if report.fixed_text != original:
+            mq5_path.write_text(report.fixed_text, encoding="utf-8")
+            wrote = True
+        else:
+            wrote = False
+        path_repr = str(mq5_path)
+    return {
+        "ok": True,
+        "path": path_repr,
+        "wrote_changes": wrote,
+        "mutations": list(report.mutations),
+        "annotations": list(report.annotations),
+        "findings_before": _findings_to_dicts(report.findings_before),
+        "findings_after": _findings_to_dicts(report.findings_after),
+        "fixed_text": report.fixed_text,
+    }
+
+
 DISPATCH = {
     "spec.from_prompt":         _tool_spec_from_prompt,
     "spec.validate":            _tool_spec_validate,
@@ -1190,6 +1398,7 @@ DISPATCH = {
     "verify.fitness":           _tool_verify_fitness,
     "verify.mfe_mae":           _tool_verify_mfe_mae,
     "verify.overfit":           _tool_verify_overfit,
+    "verify.auto_fix":          _tool_verify_auto_fix,
     "review.eng":               _tool_review_eng,
     "review.cso":               _tool_review_cso,
     "review.ceo":               _tool_review_ceo,
@@ -1197,4 +1406,7 @@ DISPATCH = {
     "rri.persona":              _tool_rri_persona,
     "dashboard.publish":        _tool_dashboard_publish,
     "forge.pr.create":          _tool_forge_pr_create,
+    "discover.doctor":          _tool_discover_doctor,
+    "discover.scan":            _tool_discover_scan,
+    "discover.llm_context":     _tool_discover_llm_context,
 }
