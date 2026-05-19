@@ -222,14 +222,17 @@ def run_pipeline(
 
     def _finalize(mq5: Path | None) -> PipelineReport:
         # Informational stages always run last and never flip pipeline ok.
-        _maybe_attach_dashboard(
-            report, out_dir, skip=skip_dashboard,
-            publish_cmd=publish_cmd,
-            skip_docs=skip_docs, docs_formats=docs_formats,
-        )
+        # Docs runs BEFORE dashboard so the dashboard embed card can
+        # derive its links from what the docs stage actually wrote
+        # (report.docs['outputs']) instead of promising files that the
+        # PDF render — or an early build failure — may never produce.
         docs_stage_mod.attach_docs(
             report, out_dir, skip=skip_docs, ea_spec=ea_spec,
             lang=docs_lang, formats=docs_formats, spec=spec, mq5_path=mq5,
+        )
+        _maybe_attach_dashboard(
+            report, out_dir, skip=skip_dashboard,
+            publish_cmd=publish_cmd,
         )
         return report
 
@@ -282,8 +285,6 @@ def _maybe_attach_dashboard(
     *,
     skip: bool,
     publish_cmd: str | None,
-    skip_docs: bool = False,
-    docs_formats: tuple[str, ...] = (),
 ) -> None:
     """Render + publish the quality-matrix dashboard and stash it on report.
 
@@ -291,25 +292,21 @@ def _maybe_attach_dashboard(
     overall pipeline outcome is unchanged. The dashboard step is
     informational — a broken publish hook must not turn a green build red.
 
-    ``skip_docs`` + ``docs_formats`` describe what the docs stage is
-    *about* to write (it runs immediately after dashboard); the digest
-    promises those links in the embedded card so the dashboard does not
-    have to be re-rendered. If docs are skipped the card is omitted.
+    The embedded docs card is built from ``report.docs['outputs']`` —
+    i.e. the files the docs stage actually wrote on disk. This is the
+    single source of truth so the dashboard never advertises a broken
+    link (PDF render failed, build aborted before docs ran, etc.).
     """
     if skip:
         report.dashboard = {"skipped": True}
         return
     try:
         name = str(report.spec.get("name", "ea"))
-        docs_links: dict[str, str] = {}
-        if not skip_docs:
-            for fmt in docs_formats:
-                docs_links[fmt] = f"{name}.docs.{fmt}"
         digest = dashboard_mod.PipelineDigest(
             name=name,
             ok=report.ok,
             stages=[s.to_dict() for s in report.stages],
-            docs_links=docs_links,
+            docs_links=_docs_links_from_report(report.docs, out_dir),
         )
         html_path = dashboard_mod.write_dashboard(digest, out_dir)
         location = dashboard_mod.publish(html_path, publish_cmd=publish_cmd)
@@ -321,6 +318,44 @@ def _maybe_attach_dashboard(
         # informational — a broken publish path must never turn a green
         # build red, so swallow both and record the failure on the report.
         report.dashboard = {"error": f"dashboard render failed: {exc}"}
+
+
+def _docs_links_from_report(
+    docs: dict[str, Any] | None,
+    out_dir: Path,
+) -> dict[str, str]:
+    """Derive the embed-card links from the docs stage's actual outputs.
+
+    ``docs['outputs']`` is a dict of ``format → absolute path`` populated
+    by :func:`auto_build_docs_stage.attach_docs`. We turn those absolute
+    paths into filenames relative to ``out_dir`` (since the dashboard
+    HTML sits in the same directory, ``<filename>`` is the right href).
+
+    Returns an empty dict when:
+
+    * docs is unset (caller never ran ``attach_docs``),
+    * docs.ok is missing/false (stage errored / skipped),
+    * docs.outputs is empty (no format succeeded — e.g. PDF-only and
+      Chrome was unavailable).
+    """
+    if not docs or not docs.get("ok"):
+        return {}
+    outputs = docs.get("outputs") or {}
+    if not isinstance(outputs, dict):
+        return {}
+    links: dict[str, str] = {}
+    for fmt, abs_path in outputs.items():
+        if not isinstance(fmt, str) or not isinstance(abs_path, str):
+            continue
+        try:
+            rel = Path(abs_path).resolve().relative_to(out_dir.resolve())
+        except ValueError:
+            # Output lives outside out_dir (shouldn't happen, but the
+            # dashboard uses relative hrefs so absolute paths from
+            # foreign dirs would point at the wrong file).
+            continue
+        links[fmt] = str(rel)
+    return links
 
 
 def _write_report(report: PipelineReport, out_dir: Path) -> Path:

@@ -368,3 +368,121 @@ def test_pipeline_dashboard_omits_embed_when_docs_skipped(
     )
     dash_html = (out / "quality-matrix.html").read_text(encoding="utf-8")
     assert "ea-docs-embed" not in dash_html
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-18.1 regression: dashboard must only promise links to files that
+# actually got written (Devin Review finding on PR-18 / PR #70).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_dashboard_omits_pdf_link_when_chrome_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pin the PR-18.1 regression: when ``--docs-formats html,md,pdf``
+    is requested but Chrome is missing, the docs stage writes html + md
+    and stamps ``pdf_error`` on the report. The dashboard card MUST
+    list html + md but NOT a broken PDF download link."""
+    from scripts.vibecodekit_mql5 import auto_build_docs_stage
+
+    monkeypatch.setattr(
+        auto_build_docs_stage.ea_docs_pdf_mod, "render_pdf",
+        lambda *a, **k: False,
+    )
+    out = tmp_path / "build"
+    report = auto_build.run_pipeline(
+        dict(_MINIMAL_SPEC),
+        out,
+        skip_compile=True,
+        skip_gate=True,
+        ea_spec=auto_build.validate_spec(dict(_MINIMAL_SPEC)),
+        docs_formats=("html", "md", "pdf"),
+    )
+    assert report.ok  # pdf failure does not red-list the build
+    assert "pdf_error" in (report.docs or {})
+
+    dash_html = (out / "quality-matrix.html").read_text(encoding="utf-8")
+    assert "ea-docs-embed" in dash_html
+    assert f'href="{_MINIMAL_SPEC["name"]}.docs.html"' in dash_html
+    assert f'href="{_MINIMAL_SPEC["name"]}.docs.md"' in dash_html
+    # The broken pdf link must NOT be embedded:
+    assert f'href="{_MINIMAL_SPEC["name"]}.docs.pdf"' not in dash_html
+    assert "Download PDF" not in dash_html
+
+
+def test_dashboard_omits_embed_when_build_fails_before_docs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the pipeline fails so early that ``attach_docs`` can't run
+    (no .mq5 / no ea_spec), the docs stage records an ``error`` and
+    NO outputs — the dashboard embed card must be omitted entirely.
+
+    Previously the dashboard pre-promised links from the requested
+    formats, so a failed build still rendered a card pointing at files
+    that were never written."""
+    out = tmp_path / "build"
+    # Force the docs stage to bail by passing ea_spec=None — the same
+    # path taken when validate_spec fails or build aborts before docs.
+    spec_dict = dict(_MINIMAL_SPEC)
+    spec_dict["name"] = "DocsBailEA"
+    report = auto_build.run_pipeline(
+        spec_dict,
+        out,
+        skip_compile=True,
+        skip_gate=True,
+        ea_spec=None,  # → attach_docs records {"error": "spec not validated"}
+    )
+    # Build itself can succeed without ea_spec for some scaffolds; what
+    # we care about is that docs.ok is NOT True and the dashboard
+    # therefore renders no card.
+    assert report.docs and not report.docs.get("ok")
+    dash_html = (out / "quality-matrix.html").read_text(encoding="utf-8")
+    assert "ea-docs-embed" not in dash_html
+
+
+def test_docs_links_from_report_returns_empty_on_docs_error() -> None:
+    """Unit-level pin for the helper: any non-ok docs payload yields
+    an empty dict so the dashboard renders no card."""
+    out = Path("/tmp/whatever")
+    assert auto_build._docs_links_from_report(None, out) == {}
+    assert auto_build._docs_links_from_report({}, out) == {}
+    assert auto_build._docs_links_from_report({"skipped": True}, out) == {}
+    assert auto_build._docs_links_from_report({"error": "boom"}, out) == {}
+
+
+def test_docs_links_from_report_makes_paths_relative(tmp_path: Path) -> None:
+    """The helper turns absolute docs.outputs paths into bare filenames
+    so the dashboard's relative <a href>s land on the sibling files."""
+    out = tmp_path / "build"
+    out.mkdir()
+    docs = {
+        "ok": True,
+        "outputs": {
+            "html": str(out / "MyEA.docs.html"),
+            "md": str(out / "MyEA.docs.md"),
+        },
+    }
+    links = auto_build._docs_links_from_report(docs, out)
+    assert links == {"html": "MyEA.docs.html", "md": "MyEA.docs.md"}
+
+
+def test_docs_links_from_report_drops_paths_outside_out_dir(
+    tmp_path: Path,
+) -> None:
+    """Defensive: an output path outside out_dir would resolve to a
+    weird relative href (``../foo``) that the dashboard can't follow,
+    so just drop it. Shouldn't happen in practice but pins the contract."""
+    out = tmp_path / "build"
+    out.mkdir()
+    foreign = tmp_path / "elsewhere" / "MyEA.docs.html"
+    foreign.parent.mkdir()
+    foreign.write_text("x")
+    docs = {
+        "ok": True,
+        "outputs": {
+            "html": str(foreign),  # outside out_dir
+            "md": str(out / "MyEA.docs.md"),
+        },
+    }
+    links = auto_build._docs_links_from_report(docs, out)
+    assert links == {"md": "MyEA.docs.md"}
