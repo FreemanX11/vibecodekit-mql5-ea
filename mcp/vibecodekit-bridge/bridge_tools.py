@@ -1039,8 +1039,10 @@ def _tool_verify_mfe_mae(args: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": "no trade rows parsed from CSV"}
     try:
         stats = mfe_mae_mod.compute_stats(rows)
+    except mfe_mae_mod.MfeMaeCsvError as exc:
+        return {"ok": False, "error": str(exc)}
     except (KeyError, ValueError) as exc:
-        return {"ok": False, "error": f"compute_stats failed: {exc} (expected header: profit,mfe,mae)"}
+        return {"ok": False, "error": f"compute_stats failed: {exc}; expected header: {mfe_mae_mod.EXPECTED_HEADER}"}
     payload = stats.to_dict()
     payload["ok"] = True
     return payload
