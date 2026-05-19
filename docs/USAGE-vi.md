@@ -520,11 +520,17 @@ mở PR trên MQL5 Algo Forge — gọi HTTP thật khi có `MQL5_FORGE_TOKEN`,
 không thì trả về dry-run payload (kèm `endpoint` + `planned_payload`).
 Chain hai tool này để nhúng URL dashboard public vào body của Forge PR.
 
-**Schema `ea-spec.yaml` mở rộng (PR-2):** thêm 3 block optional, full
-back-compat — `prop_firm` (DD limits + news block + weekend-flat cho
-FTMO/MFF), `time_exit` (close on Friday, max trade hours, session
-windows), `stealth` (random slippage / comment pool / lot jitter,
-split orders). Spec cũ không có các block này vẫn validate như cũ.
+**Schema `ea-spec.yaml` mở rộng (PR-2 + PR-8):** thêm 8 block optional,
+full back-compat. PR-2 cho 3 block đầu — `prop_firm` (DD limits + news
+block + weekend-flat cho FTMO/MFF), `time_exit` (close on Friday, max
+trade hours, session windows), `stealth` (random slippage / comment
+pool / lot jitter, split orders). PR-8 thêm 5 block: `trailing`
+(trailing-stop kiểu fixed / ATR / parabolic), `partial_close` (scale-
+out nhiều mức + move-SL-về-breakeven sau mức đầu), `correlation` (max
+vị thế correlated, ngưỡng Pearson, symbol group, block-on-correlated-
+loss), `swap_filter` (giới hạn swap pip/ngày theo hướng, skip thứ tư
+triple-swap), `logs` (level, file pattern, terminal output, redact số
+tài khoản). Spec cũ không có các block này vẫn validate như cũ.
 
 **PR-7 (discovery / fix-loop helpers):** `discover.doctor` chạy
 doctor của kit (Python / Wine / MetaEditor / module + scaffold bắt
@@ -542,9 +548,8 @@ bridge.
 python mcp/vibecodekit-bridge/server.py
 ```
 
-Wire format ổn định từ PR-1 → PR-5 → PR-7. PR sau (PR-8: schema
-mở rộng 5 block còn lại — `trailing`, `partial_close`, `correlation`,
-`swap_filter`, `logs` — đang plan) sẽ giữ nguyên surface bridge.
+Wire format ổn định từ PR-1 → PR-5 → PR-7 → PR-8 và các PR sau
+(PR-8 chỉ thêm field vào schema spec, không đụng surface bridge).
 
 
 ### 5.5. Cấu hình MCP client
