@@ -16,16 +16,16 @@ statistical verify suite (``verify.backtest`` + ``verify.walkforward``
 + ``verify.montecarlo`` + ``verify.multibroker`` + ``verify.fitness``
 + ``verify.mfe_mae`` + ``verify.overfit``). PR-4 adds the review /
 RRI suite (``review.eng`` + ``review.cso`` + ``review.ceo`` +
-``review.investigate`` + ``rri.persona``).
-
-Later PRs will extend ``DISPATCH`` with the ship-stage tools
-(``dashboard.publish``, ``forge.pr.create``) without changing the
-wire format.
+``review.investigate`` + ``rri.persona``). PR-5 adds the ship-stage
+tools (``dashboard.publish`` + ``forge.pr.create``) — the final
+link in the kit's prompt → spec → build → verify → review → ship
+loop over MCP.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +49,8 @@ from vibecodekit_mql5 import (
     walkforward as walkforward_mod,
 )
 from vibecodekit_mql5 import build as build_mod
+from vibecodekit_mql5 import dashboard as dashboard_mod
+from vibecodekit_mql5 import forge_pr as forge_pr_mod
 from vibecodekit_mql5.permission import orchestrator as orch_mod
 from vibecodekit_mql5.review import (
     ceo_review as ceo_review_mod,
@@ -506,6 +508,94 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "required": [],
         },
     },
+    # ── PR-5: ship-stage tools (dashboard + forge) ─────────────────────────
+    {
+        "name": "dashboard.publish",
+        "description": (
+            "Render the 64-cell quality-matrix dashboard for a build report "
+            "and (optionally) publish it via a publish_cmd. Returns the local "
+            "HTML path + public_url. Without a publish_cmd the public_url is "
+            "a file:// URI — hermetic-safe. Provide an html_path to skip "
+            "rendering and just publish an existing HTML; otherwise supply "
+            "name + stages (and optional matrix_inputs) and the kit will "
+            "render + write quality-matrix.html into out_dir first."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "html_path": {
+                    "type": "string",
+                    "description": (
+                        "Absolute path to an already-rendered dashboard HTML. "
+                        "Mutually exclusive with name/stages."
+                    ),
+                },
+                "name": {
+                    "type": "string",
+                    "description": "EA / pipeline name. Required when rendering.",
+                },
+                "ok": {
+                    "type": "boolean",
+                    "description": "Overall pipeline pass/fail (default True).",
+                },
+                "stages": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "Stage entries (each {name, ok, skipped}). Required "
+                        "when rendering. Stage names map to matrix cells: "
+                        "build, lint, compile, gate."
+                    ),
+                },
+                "matrix_inputs": {
+                    "type": "object",
+                    "description": "Optional pre-computed RRI matrix cell overrides.",
+                },
+                "out_dir": {
+                    "type": "string",
+                    "description": (
+                        "Where to write quality-matrix.html when rendering. "
+                        "Required iff html_path is omitted."
+                    ),
+                },
+                "publish_cmd": {
+                    "type": "string",
+                    "description": (
+                        "Shell command receiving the HTML path as its last "
+                        "argv. Must print the public URL as its last non-blank "
+                        "stdout line. Falls back to MQL5_DASHBOARD_PUBLISH_CMD "
+                        "env, then to file:// fallback."
+                    ),
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "forge.pr.create",
+        "description": (
+            "Open a pull request on MQL5 Algo Forge. Real HTTP call when a "
+            "token is available (via the 'token' arg or the MQL5_FORGE_TOKEN "
+            "env var); otherwise returns a structured dry-run dict so the "
+            "agent can show the planned payload to the user without leaving "
+            "the hermetic CI envelope. Pair with dashboard.publish to embed "
+            "the public URL into the PR body."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo":   {"type": "string", "description": "Forge repo in 'owner/name' form."},
+                "head":   {"type": "string", "description": "Source branch."},
+                "base":   {"type": "string", "description": "Target branch (default 'main')."},
+                "title":  {"type": "string", "description": "PR title."},
+                "body":   {"type": "string", "description": "PR body (markdown)."},
+                "token":  {"type": "string", "description": "Forge API token. Falls back to MQL5_FORGE_TOKEN env."},
+                "api_base": {"type": "string", "description": "Override forge API base URL (advanced)."},
+                "dry_run": {"type": "boolean", "description": "Force the no-token dry-run path even when a token is set."},
+            },
+            "required": ["repo", "head", "title"],
+        },
+    },
     {
         "name": "rri.persona",
         "description": (
@@ -957,6 +1047,93 @@ def _tool_review_investigate(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _tool_dashboard_publish(args: dict[str, Any]) -> dict[str, Any]:
+    """Render + publish the quality-matrix dashboard.
+
+    Two modes:
+    * ``html_path`` supplied      → publish that file as-is.
+    * ``name`` + ``stages`` + ``out_dir`` → render quality-matrix.html
+      from the pipeline digest first, then publish.
+    """
+    html_path_raw = args.get("html_path")
+    publish_cmd = args.get("publish_cmd") or None
+    if html_path_raw:
+        html_path = Path(html_path_raw).resolve()
+    else:
+        name = args.get("name")
+        stages = args.get("stages")
+        out_dir_raw = args.get("out_dir")
+        if not (isinstance(name, str) and name):
+            return {"ok": False, "error": "name is required when html_path is omitted"}
+        if not (isinstance(stages, list) and all(isinstance(s, dict) for s in stages)):
+            return {"ok": False, "error": "stages must be a list of objects when html_path is omitted"}
+        if not (isinstance(out_dir_raw, str) and out_dir_raw):
+            return {"ok": False, "error": "out_dir is required when html_path is omitted"}
+        matrix_inputs = args.get("matrix_inputs") or {}
+        if not isinstance(matrix_inputs, dict):
+            return {"ok": False, "error": "matrix_inputs must be an object"}
+        digest = dashboard_mod.PipelineDigest(
+            name=name,
+            ok=bool(args.get("ok", True)),
+            stages=list(stages),
+            matrix_inputs=matrix_inputs,
+        )
+        out_dir = Path(out_dir_raw).resolve()
+        html_path = dashboard_mod.write_dashboard(digest, out_dir)
+    location = dashboard_mod.publish(html_path, publish_cmd=publish_cmd)
+    loc_dict = location.to_dict()
+    return {
+        "ok": location.error is None,
+        **loc_dict,
+    }
+
+
+def _tool_forge_pr_create(args: dict[str, Any]) -> dict[str, Any]:
+    """Open a PR on MQL5 Algo Forge.
+
+    No-token / dry-run mode returns a structured planned-payload dict so
+    the agent can preview the request without leaving the hermetic
+    envelope. Real mode delegates to :func:`forge_pr.open_pr`.
+    """
+    repo = args.get("repo")
+    head = args.get("head")
+    title = args.get("title")
+    if not (isinstance(repo, str) and repo):
+        return {"ok": False, "error": "repo is required"}
+    if not (isinstance(head, str) and head):
+        return {"ok": False, "error": "head is required"}
+    if not (isinstance(title, str) and title):
+        return {"ok": False, "error": "title is required"}
+    base = args.get("base", "main")
+    body = args.get("body", "")
+    api_base = args.get("api_base") or forge_pr_mod.DEFAULT_BASE
+    token = args.get("token") or os.environ.get("MQL5_FORGE_TOKEN", "")
+    spec = forge_pr_mod.PrSpec(
+        repo=repo, head=head, base=base, title=title, body=body,
+    )
+    payload = {
+        "repo": repo, "head": head, "base": base,
+        "title": title, "body": body,
+        "api_base": api_base,
+    }
+    if bool(args.get("dry_run", False)) or not token:
+        return {
+            "ok": False,
+            "dry_run": True,
+            "reason": "no MQL5_FORGE_TOKEN set" if not token else "dry_run=true",
+            "endpoint": f"{api_base}/repos/{repo}/pulls",
+            "planned_payload": payload,
+        }
+    report = forge_pr_mod.open_pr(spec, token=token, base_url=api_base)
+    return {
+        "ok": report.ok,
+        "endpoint": report.endpoint,
+        "status": report.status,
+        "body": report.body,
+        "error": report.error,
+    }
+
+
 def _tool_rri_persona(args: dict[str, Any]) -> dict[str, Any]:
     """Generic single-persona RRI review (mirrors ``mql5-review`` CLI)."""
     persona = args.get("persona")
@@ -1018,4 +1195,6 @@ DISPATCH = {
     "review.ceo":               _tool_review_ceo,
     "review.investigate":       _tool_review_investigate,
     "rri.persona":              _tool_rri_persona,
+    "dashboard.publish":        _tool_dashboard_publish,
+    "forge.pr.create":          _tool_forge_pr_create,
 }

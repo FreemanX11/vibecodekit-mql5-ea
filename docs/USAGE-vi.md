@@ -486,7 +486,7 @@ ALGO_FORGE_API_KEY=xxx python mcp/algo-forge-bridge/server.py
 
 ### 5.4. vibecodekit-bridge
 
-23 tool qua 4 PR. Cho phép AI coding agent (Codex CLI / Claude Code /
+25 tool qua 5 PR. Cho phép AI coding agent (Codex CLI / Claude Code /
 Cursor / Devin / Claude Desktop) gọi thẳng vào pipeline `prompt → spec
 → build → verify → permission gate` qua JSON-RPC. Wire format ổn định
 giữa các PR — PR sau chỉ mở rộng `DISPATCH`.
@@ -512,6 +512,13 @@ Sharpe IS/OOS — không cần XML).
 `review.investigate` (perf-analyst + strategy-architect), và
 `rri.persona` (generic 1-persona x 1-step x 1-mode). Mỗi tool trả về
 markdown sẵn sàng dán vào PR description hoặc file `review.md`.
+
+**PR-5 (ship-stage tools):** `dashboard.publish` render dashboard
+quality-matrix 64 cell từ pipeline digest và publish qua command tùy
+chọn (fallback `file://` URI khi không cấu hình command). `forge.pr.create`
+mở PR trên MQL5 Algo Forge — gọi HTTP thật khi có `MQL5_FORGE_TOKEN`,
+không thì trả về dry-run payload (kèm `endpoint` + `planned_payload`).
+Chain hai tool này để nhúng URL dashboard public vào body của Forge PR.
 
 **Schema `ea-spec.yaml` mở rộng (PR-2):** thêm 3 block optional, full
 back-compat — `prop_firm` (DD limits + news block + weekend-flat cho

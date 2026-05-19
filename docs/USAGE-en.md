@@ -419,7 +419,7 @@ ALGO_FORGE_API_KEY=xxx python mcp/algo-forge-bridge/server.py
 
 ### 5.4. vibecodekit-bridge
 
-23 tools across four PRs. Lets an AI coding agent (Codex CLI / Claude
+25 tools across five PRs. Lets an AI coding agent (Codex CLI / Claude
 Code / Cursor / Devin / Claude Desktop) drive the full `prompt → spec
 → build → verify → permission-gate` loop via JSON-RPC. The wire format
 is stable across PRs — future ones extend `DISPATCH` without breaking
@@ -447,6 +447,14 @@ template), `verify.mfe_mae` (excursion CSV stats), `verify.overfit`
 generic `rri.persona` for ad-hoc 1-persona x 1-step x 1-mode drills.
 Each tool returns markdown ready to drop into a PR description or a
 `review.md` artefact.
+
+**PR-5 (ship-stage tools):** `dashboard.publish` renders the 64-cell
+quality-matrix HTML from a pipeline digest and publishes it via a
+configurable command (falls back to `file://` URI when no command is
+set). `forge.pr.create` opens a PR on MQL5 Algo Forge — real HTTP call
+when `MQL5_FORGE_TOKEN` is available, structured dry-run payload
+otherwise. Chain them to embed the public dashboard URL directly into
+the Forge PR body.
 
 **Spec schema additions (PR-2):** three optional, back-compat blocks
 on `ea-spec.yaml` — `prop_firm` (FTMO/MFF DD limits + news block +

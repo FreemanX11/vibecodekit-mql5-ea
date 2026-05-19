@@ -8,7 +8,7 @@ This is the 4th MCP server in the kit, joining `metaeditor-bridge`,
 `mt5-bridge`, and `algo-forge-bridge`. Same wire format — same
 `initialize` / `tools/list` / `tools/call` envelope.
 
-## Tool set (23)
+## Tool set (25)
 
 ### PR-1: prompt → spec → build → permission-gate (4 tools)
 
@@ -58,6 +58,19 @@ single-persona escape hatch.
 | `review.investigate`  | `vibecodekit_mql5.review.investigate.render`  | Open-ended investigation (perf-analyst + strategy-architect; default steps: scan + rri). |
 | `rri.persona`         | `vibecodekit_mql5.review.review.render`       | Generic single-persona drill. Pick 1 of 6 RRI personas × 1 of 8 steps × 1 of 3 modes. Omit `persona` to list IDs. |
 
+### PR-5: ship-stage tools (2 tools)
+
+Close the kit's full **prompt → spec → build → verify → review → ship**
+loop over MCP. Both are hermetic-safe — `dashboard.publish` falls back to
+a `file://` URI when no publish command is configured; `forge.pr.create`
+returns a structured dry-run payload when no token is set, so CI never
+touches the network.
+
+| Tool | Wraps | One-line purpose |
+|------|-------|------------------|
+| `dashboard.publish` | `vibecodekit_mql5.dashboard.{write_dashboard,publish}` | Render the 64-cell quality-matrix HTML from a pipeline digest (or take an existing `html_path`) and publish it via a configurable command. Returns `local_path` + `public_url`. |
+| `forge.pr.create`   | `vibecodekit_mql5.forge_pr.open_pr` | Open a PR on MQL5 Algo Forge. With `token` arg or `MQL5_FORGE_TOKEN` env: real HTTP call. Without: structured dry-run payload (`endpoint` + `planned_payload`). Pair with `dashboard.publish` to embed the public URL into the PR body. |
+
 ### `ea-spec.yaml` schema additions (PR-2)
 
 Three optional, back-compat blocks were added so AI agents can talk
@@ -75,9 +88,9 @@ existing scaffolds continue to render exactly as before. Templates
 that *do* want to consume these blocks can read them from the
 normalised `EaSpec` dataclass.
 
-Future PRs will extend `DISPATCH` with the remaining ship-stage tools
-(`dashboard.publish`, `forge.pr.create`, …). The wire format does
-not change.
+All five plan-β rút gọn milestones are now in `DISPATCH`. The wire
+format is unchanged across PR-1 → PR-5 and stays stable for future
+extensions.
 
 ## Launch directly
 

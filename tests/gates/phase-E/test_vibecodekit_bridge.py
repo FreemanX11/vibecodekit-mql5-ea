@@ -773,3 +773,191 @@ def test_rri_persona_enterprise_has_more_questions_than_personal() -> None:
     })["markdown"]
     # enterprise mode = 25 q vs personal = 5 q per persona
     assert enterprise.count("- [ ] **") > personal.count("- [ ] **")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-5: dashboard.publish + forge.pr.create chaining
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_tools_list_includes_pr5_ship_tools() -> None:
+    srv = _load_server()
+    resp = srv.handle({"jsonrpc": "2.0", "id": 200, "method": "tools/list"})
+    names = {t["name"] for t in resp["result"]["tools"]}
+    assert {"dashboard.publish", "forge.pr.create"} <= names
+    # PR-1 + PR-2 + PR-3 + PR-4 + PR-5 = 25 tools total.
+    assert len(names) >= 25
+
+
+def test_dashboard_publish_renders_and_returns_file_uri(tmp_path: Path) -> None:
+    srv = _load_server()
+    payload = _call(srv, "dashboard.publish", {
+        "name": "TestEA",
+        "ok": True,
+        "stages": [
+            {"name": "build",   "ok": True,  "skipped": False},
+            {"name": "lint",    "ok": True,  "skipped": False},
+            {"name": "compile", "ok": True,  "skipped": True},
+            {"name": "gate",    "ok": True,  "skipped": False},
+        ],
+        "out_dir": str(tmp_path),
+    })
+    assert payload["ok"] is True
+    assert payload["public_url"].startswith("file://")
+    assert payload["public_url"].endswith("/quality-matrix.html")
+    assert payload["error"] is None
+    assert payload["command"] is None
+    assert Path(payload["local_path"]).is_file()
+
+
+def test_dashboard_publish_with_html_path_skips_render(tmp_path: Path) -> None:
+    srv = _load_server()
+    html = tmp_path / "preexisting.html"
+    html.write_text("<html><body>cached</body></html>", encoding="utf-8")
+    payload = _call(srv, "dashboard.publish", {"html_path": str(html)})
+    assert payload["ok"] is True
+    assert payload["public_url"] == html.as_uri()
+    assert payload["local_path"] == str(html)
+
+
+def test_dashboard_publish_invokes_publish_cmd(tmp_path: Path) -> None:
+    srv = _load_server()
+    html = tmp_path / "x.html"
+    html.write_text("<html></html>", encoding="utf-8")
+    # printf-based stub: emit a URL on the last stdout line.
+    cmd = "sh -c 'echo https://cdn.example.com/$(basename \"$1\")' --"
+    payload = _call(srv, "dashboard.publish", {
+        "html_path": str(html),
+        "publish_cmd": cmd,
+    })
+    assert payload["ok"] is True
+    assert payload["public_url"] == "https://cdn.example.com/x.html"
+    assert payload["command"] == cmd
+
+
+def test_dashboard_publish_rejects_missing_name(tmp_path: Path) -> None:
+    srv = _load_server()
+    payload = _call(srv, "dashboard.publish", {
+        "stages": [{"name": "build", "ok": True, "skipped": False}],
+        "out_dir": str(tmp_path),
+    })
+    assert payload["ok"] is False
+    assert "name is required" in payload["error"]
+
+
+def test_dashboard_publish_rejects_missing_stages(tmp_path: Path) -> None:
+    srv = _load_server()
+    payload = _call(srv, "dashboard.publish", {
+        "name": "X",
+        "out_dir": str(tmp_path),
+    })
+    assert payload["ok"] is False
+    assert "stages" in payload["error"]
+
+
+def test_dashboard_publish_rejects_missing_out_dir() -> None:
+    srv = _load_server()
+    payload = _call(srv, "dashboard.publish", {
+        "name": "X",
+        "stages": [{"name": "build", "ok": True, "skipped": False}],
+    })
+    assert payload["ok"] is False
+    assert "out_dir is required" in payload["error"]
+
+
+def test_forge_pr_create_dry_run_without_token(monkeypatch) -> None:
+    monkeypatch.delenv("MQL5_FORGE_TOKEN", raising=False)
+    srv = _load_server()
+    payload = _call(srv, "forge.pr.create", {
+        "repo":  "me/strategy",
+        "head":  "devin/feat",
+        "base":  "main",
+        "title": "EA build",
+        "body":  "Dashboard: https://example.com/dashboard.html",
+    })
+    assert payload["ok"] is False
+    assert payload["dry_run"] is True
+    assert "no MQL5_FORGE_TOKEN" in payload["reason"]
+    assert payload["endpoint"].endswith("/repos/me/strategy/pulls")
+    assert payload["planned_payload"]["title"] == "EA build"
+    assert payload["planned_payload"]["base"] == "main"
+
+
+def test_forge_pr_create_explicit_dry_run_flag(monkeypatch) -> None:
+    monkeypatch.setenv("MQL5_FORGE_TOKEN", "fake-token")
+    srv = _load_server()
+    payload = _call(srv, "forge.pr.create", {
+        "repo":   "owner/repo",
+        "head":   "feat/x",
+        "title":  "feat: x",
+        "dry_run": True,
+    })
+    assert payload["ok"] is False
+    assert payload["dry_run"] is True
+    assert payload["reason"] == "dry_run=true"
+
+
+def test_forge_pr_create_defaults_base_to_main(monkeypatch) -> None:
+    monkeypatch.delenv("MQL5_FORGE_TOKEN", raising=False)
+    srv = _load_server()
+    payload = _call(srv, "forge.pr.create", {
+        "repo":  "me/strategy",
+        "head":  "devin/x",
+        "title": "x",
+    })
+    assert payload["planned_payload"]["base"] == "main"
+
+
+def test_forge_pr_create_rejects_missing_repo() -> None:
+    srv = _load_server()
+    payload = _call(srv, "forge.pr.create", {"head": "x", "title": "y"})
+    assert payload["ok"] is False
+    assert "repo is required" in payload["error"]
+
+
+def test_forge_pr_create_rejects_missing_head() -> None:
+    srv = _load_server()
+    payload = _call(srv, "forge.pr.create", {"repo": "a/b", "title": "y"})
+    assert payload["ok"] is False
+    assert "head is required" in payload["error"]
+
+
+def test_forge_pr_create_rejects_missing_title() -> None:
+    srv = _load_server()
+    payload = _call(srv, "forge.pr.create", {"repo": "a/b", "head": "x"})
+    assert payload["ok"] is False
+    assert "title is required" in payload["error"]
+
+
+def test_pr5_chain_dashboard_url_into_forge_pr_body(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """End-to-end MCP chain: dashboard.publish -> forge.pr.create.
+
+    Demonstrates the exact pattern the plan β rút gọn roadmap envisaged —
+    an AI agent gets the public dashboard URL from the first tool and
+    feeds it into the PR body of the second.
+    """
+    monkeypatch.delenv("MQL5_FORGE_TOKEN", raising=False)
+    srv = _load_server()
+    dash = _call(srv, "dashboard.publish", {
+        "name": "MeanReversion",
+        "ok": True,
+        "stages": [
+            {"name": "build", "ok": True, "skipped": False},
+            {"name": "lint",  "ok": True, "skipped": False},
+            {"name": "gate",  "ok": True, "skipped": False},
+        ],
+        "out_dir": str(tmp_path),
+    })
+    assert dash["ok"] is True
+    pr_body = f"Quality matrix dashboard: {dash['public_url']}"
+    pr = _call(srv, "forge.pr.create", {
+        "repo":  "trader/mean-rev",
+        "head":  "devin/build-1",
+        "title": "MeanReversion EA build",
+        "body":  pr_body,
+    })
+    assert pr["dry_run"] is True
+    assert pr["planned_payload"]["body"] == pr_body
+    assert dash["public_url"] in pr["planned_payload"]["body"]
