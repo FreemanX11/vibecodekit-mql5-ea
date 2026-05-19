@@ -27,6 +27,19 @@ SERVER_VERSION = "1.0.0"
 PROTOCOL_VERSION = "2024-11-05"
 
 
+# Pre-built lookup of ``tool name → list of required argument keys`` so the
+# JSON-RPC dispatcher can enforce ``inputSchema.required`` *before* the
+# tool function is called. Smoke-test gap G2 in
+# ``/home/ubuntu/work/smoke-test/REPORT.md`` flagged that the server
+# previously let calls through with missing required keys, leaving each
+# tool to fail gracefully on its own — inconsistent across the 29-tool
+# surface and not what the MCP / JSON-RPC 2.0 spec calls for.
+_REQUIRED_BY_TOOL: dict[str, list[str]] = {
+    schema["name"]: list(schema.get("inputSchema", {}).get("required", []))
+    for schema in TOOL_SCHEMAS
+}
+
+
 def handle(request: dict[str, Any]) -> dict[str, Any] | None:
     """Return a JSON-RPC response dict (or None for notifications)."""
     rid = request.get("id")
@@ -47,6 +60,16 @@ def handle(request: dict[str, Any]) -> dict[str, Any] | None:
         fn = DISPATCH.get(name)
         if fn is None:
             return _err(rid, -32601, f"unknown tool: {name}")
+        # PR-13 (gap G2): enforce ``inputSchema.required`` here so every
+        # tool gets a uniform JSON-RPC error envelope when the caller
+        # forgets a required key, instead of relying on each handler to
+        # check for ``None`` and return a tool-local error string.
+        missing = _missing_required(name, args)
+        if missing:
+            return _err(
+                rid, -32602,
+                f"tool {name}: missing required arguments: {missing}",
+            )
         try:
             result = fn(args)
         except Exception as exc:  # noqa: BLE001
@@ -66,6 +89,18 @@ def _ok(rid: Any, result: Any) -> dict[str, Any]:
 
 def _err(rid: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": rid, "error": {"code": code, "message": message}}
+
+
+def _missing_required(tool_name: str, args: dict[str, Any]) -> list[str]:
+    """Return the subset of required keys absent from ``args``.
+
+    A key is considered "missing" when it is not in ``args`` at all, or
+    when its value is ``None``. We deliberately do not treat empty
+    strings / 0 / empty lists as missing — those are valid intentional
+    inputs for some tools (e.g. an empty ``extra_args`` list).
+    """
+    required = _REQUIRED_BY_TOOL.get(tool_name, [])
+    return [k for k in required if args.get(k) is None]
 
 
 def serve(stdin: Any = sys.stdin, stdout: Any = sys.stdout) -> None:

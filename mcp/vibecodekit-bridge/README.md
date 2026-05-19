@@ -115,6 +115,24 @@ python mcp/vibecodekit-bridge/server.py < requests.ndjson
 Each line of stdin is one JSON-RPC request; each line of stdout is one
 JSON-RPC response. Notifications (`notifications/*`) produce no output.
 
+## Argument validation (PR-13)
+
+`tools/call` enforces every tool's `inputSchema.required` keys
+**before** dispatching to the handler. Missing required keys (absent
+or explicitly `null`) return a JSON-RPC `-32602 Invalid params` error
+envelope listing each missing key. Empty strings, zeros, and empty
+lists are treated as intentional values, not missing. Unknown tool
+names still return `-32601 Method not found`.
+
+Example — a call to `discover.llm_context` missing `pattern`:
+
+```json
+{"jsonrpc": "2.0", "id": 1, "error": {
+  "code": -32602,
+  "message": "tool discover.llm_context: missing required arguments: ['pattern']"
+}}
+```
+
 ## Smoke test
 
 ```bash
