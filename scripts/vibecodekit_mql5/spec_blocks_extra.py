@@ -288,6 +288,11 @@ def validate_partial_close(
                         f"{sorted(unknown)} (valid: ['at_pips', 'pct'])"
                     )
                 ok = True
+                # at_pips uses an exclusive lower bound (> 0): a partial-close
+                # at 0 pips is meaningless. pct uses an effectively inclusive
+                # lower bound (>= 0) — we shave a tiny epsilon off the kit's
+                # exclusive check so pct=0 still passes while pct<0 (e.g. -0.5)
+                # is rejected as semantically invalid.
                 for k, (lo, hi) in (("at_pips",  (0.0, 100000.0)),
                                     ("pct",      (0.0, 100.0))):
                     if k not in lvl:
@@ -300,7 +305,7 @@ def validate_partial_close(
                     check_num_range(errors,
                                     f"spec.partial_close.levels[{idx}]",
                                     k, lvl[k],
-                                    min_excl=lo if k == "at_pips" else -1.0,
+                                    min_excl=lo if k == "at_pips" else lo - 1e-9,
                                     max_incl=hi, is_int=False)
                     if len(errors) != before:
                         ok = False

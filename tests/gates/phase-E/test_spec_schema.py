@@ -774,3 +774,37 @@ def test_pr8_unknown_top_level_key_still_caught() -> None:
     with pytest.raises(spec_schema.SpecValidationError) as excinfo:
         spec_schema.validate({**MINIMAL, "bogus_section": {}})
     assert "bogus_section" in str(excinfo.value)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-8.1 hotfix: partial_close.levels[].pct must reject negative percentages
+# (Devin Review caught a hardcoded ``min_excl=-1.0`` that let ``pct: -0.5``
+# pass validation, contradicting the dataclass docstring of ``[0, 100)``).
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_partial_close_rejects_negative_pct() -> None:
+    """``pct`` is a close-percentage; ``-0.5`` is semantically invalid."""
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "partial_close": {
+                "levels": [{"at_pips": 20.0, "pct": -0.5}],
+            },
+        })
+    msg = str(excinfo.value)
+    assert "pct" in msg
+    assert "-0.5" in msg
+
+
+def test_partial_close_still_accepts_pct_zero() -> None:
+    """Zero is the documented lower bound — ``pct: 0`` must still validate
+    cleanly. (Guards against an over-tightened fix that would also reject 0.)
+    """
+    out = spec_schema.validate({
+        **MINIMAL,
+        "partial_close": {
+            "levels": [{"at_pips": 20.0, "pct": 0.0}],
+        },
+    })
+    assert out.partial_close is not None
+    assert out.partial_close.levels[0]["pct"] == 0.0
