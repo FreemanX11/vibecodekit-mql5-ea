@@ -74,3 +74,36 @@ def test_parse_log_hundred_errors_is_failure():
     """Regression: `Result: 100 errors` must fail, not pass."""
     r = parse_log(HUNDRED_ERRORS_LOG)
     assert r.success is False
+
+
+# PR-14 / gap G5 — regression tests for the false-positive case where the
+# log was empty or had no ``Result:`` summary line (e.g. wrong
+# ``METAEDITOR_PATH``, Wine crash). Previously ``parse_log`` fell through
+# to ``success = True`` whenever there were no error lines, even though
+# MetaEditor never actually emitted a result.
+
+def test_parse_log_empty_is_failure():
+    """Empty log (MetaEditor never ran) must fail, not silently pass."""
+    r = parse_log("")
+    assert r.success is False
+    assert any("Result:" in e for e in r.errors)
+    assert any("METAEDITOR_PATH" in e for e in r.errors)
+
+
+def test_parse_log_no_result_line_is_failure():
+    """A log with progress messages but no ``Result:`` must fail."""
+    log = (
+        "Z:\\demo.mq5 : information: compiling Z:\\demo.mq5\n"
+        " : information: generating code\n"
+        " : information: generating code 50%\n"
+    )
+    r = parse_log(log)
+    assert r.success is False
+    assert any("Result:" in e for e in r.errors)
+
+
+def test_parse_log_whitespace_only_is_failure():
+    """Whitespace-only log (BOM-stripped to empty) must fail."""
+    r = parse_log("   \n\n  \n")
+    assert r.success is False
+    assert any("no 'Result:' summary line" in e for e in r.errors)

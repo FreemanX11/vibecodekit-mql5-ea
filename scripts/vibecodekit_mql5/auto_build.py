@@ -290,7 +290,12 @@ def _maybe_attach_dashboard(
         html_path = dashboard_mod.write_dashboard(digest, out_dir)
         location = dashboard_mod.publish(html_path, publish_cmd=publish_cmd)
         report.dashboard = location.to_dict()
-    except OSError as exc:  # filesystem permission / disk-full / etc.
+    except (OSError, ValueError) as exc:
+        # ``OSError`` covers filesystem permission / disk-full / etc.;
+        # ``ValueError`` previously leaked out of ``Path.as_uri()`` when
+        # callers passed a relative ``--out-dir``. The dashboard step is
+        # informational — a broken publish path must never turn a green
+        # build red, so swallow both and record the failure on the report.
         report.dashboard = {"error": f"dashboard render failed: {exc}"}
 
 

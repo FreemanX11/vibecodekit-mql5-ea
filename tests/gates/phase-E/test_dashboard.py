@@ -134,6 +134,28 @@ def test_publish_html_missing(tmp_path: Path) -> None:
     assert location.public_url is None
 
 
+def test_publish_relative_path_returns_absolute_file_uri(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PR-14 (gap G4): relative ``html_path`` previously crashed inside
+    ``Path.as_uri()`` with a ``ValueError``. The publish hook must resolve
+    the path so the fallback ``file://`` URI is always well-formed.
+    """
+    html = tmp_path / "quality-matrix.html"
+    html.write_text("<html></html>", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    rel = Path("quality-matrix.html")
+    assert not rel.is_absolute()
+
+    location = dashboard.publish(rel, publish_cmd=None, env={})
+
+    assert location.error is None
+    assert location.public_url is not None
+    assert location.public_url.startswith("file://")
+    # Resolved URI must point to the same on-disk file.
+    assert location.public_url == html.resolve().as_uri()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # render_from_pipeline — stage results → matrix cells
 # ─────────────────────────────────────────────────────────────────────────────
@@ -375,6 +397,31 @@ def test_main_cli_publish_cmd_flag_overrides_env(
     assert rc == 0
     data = json.loads((tmp_path / "build" / "auto-build-report.json").read_text())
     assert data["dashboard"]["public_url"] == "https://flag-wins.test"
+
+
+def test_run_pipeline_relative_out_dir_does_not_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PR-14 (gap G4): a relative ``--out-dir`` previously caused
+    ``Path.as_uri()`` to raise ``ValueError`` and the dashboard step's
+    ``except OSError`` did not catch it, taking the whole pipeline down.
+    The fix in ``dashboard.publish`` resolves the path, and
+    ``_maybe_attach_dashboard`` now also catches ``ValueError`` as a
+    defence-in-depth — exercise both layers here.
+    """
+    _patch_compile_success(monkeypatch)
+    _patch_orchestrator_pass(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    rel_out = Path("build")  # relative on purpose
+    assert not rel_out.is_absolute()
+
+    report = auto_build.run_pipeline(dict(MINIMAL_SPEC), rel_out)
+
+    # The pipeline finished without leaking ValueError.
+    assert "error" not in report.dashboard or report.dashboard.get("error") is None
+    public_url = report.dashboard.get("public_url")
+    assert public_url is not None
+    assert public_url.startswith("file://")
 
 
 def test_console_script_entry_point_resolves() -> None:

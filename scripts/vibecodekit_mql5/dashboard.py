@@ -148,9 +148,14 @@ def publish(
         )
     cmd = publish_cmd or (env or os.environ).get(ENV_PUBLISH_CMD, "").strip() or None
     if not cmd:
+        # ``Path.as_uri()`` raises ``ValueError`` on relative paths. The
+        # auto-build pipeline used to crash here when callers passed a
+        # relative ``--out-dir``. Resolve to an absolute path first so the
+        # ``file://`` URI is always well-formed and the dashboard step
+        # stays informational (never raises).
         return DashboardLocation(
             local_path=str(html_path),
-            public_url=html_path.as_uri(),
+            public_url=html_path.resolve().as_uri(),
             error=None,
             command=None,
         )
