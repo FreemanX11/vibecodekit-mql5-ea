@@ -56,7 +56,7 @@ def test_metaeditor_compile_demo_mq5(tmp_path):
     else:
         cmd = [metaeditor, f"/compile:{work}", f"/log:{log}"]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     # MetaEditor returns various exit codes; check log content for success
     if log.exists():
         log_text = log.read_text(encoding="utf-16-le", errors="ignore")
