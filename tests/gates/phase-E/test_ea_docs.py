@@ -157,6 +157,50 @@ def test_build_meta_now_fills_timestamp() -> None:
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Regression tests for PR-16.1 — Devin Review findings.
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_kit_version_resolves_real_distribution() -> None:
+    """The dist name in pyproject.toml is 'vibecodekit-mql5-ea' (with the
+    ``-ea`` suffix). The previous lookup used 'vibecodekit-mql5', so
+    ``_kit_version`` always returned 'unknown' once the package was
+    installed in editable mode. Pin the correct dist name here so the
+    bug can't regress silently."""
+    from scripts.vibecodekit_mql5 import ea_docs as ea_docs_mod
+
+    assert ea_docs_mod._DIST_NAME == "vibecodekit-mql5-ea"
+    # If the test runner installed the package (e.g. ``pip install -e .``)
+    # the call should succeed and return a non-"unknown" version.
+    # When the dist is not installed (e.g. tests run from a raw checkout
+    # without ``pip install -e .``) we still want the call to be safe.
+    assert ea_docs_mod._kit_version() != ""
+
+
+def test_signal_kinds_html_escaped_in_closing_fragment() -> None:
+    """``build_doc_content`` accepts any ``EaSpec`` directly, including
+    one whose signal kinds contain raw HTML. The closing fragment must
+    not let that leak through as live markup."""
+    from scripts.vibecodekit_mql5.ea_docs import _render_signals_summary
+
+    fragment = _render_signals_summary("<script>alert(1)</script>", "vi")
+    assert "<script>" not in fragment
+    assert "&lt;script&gt;" in fragment
+    assert "&lt;/script&gt;" in fragment
+
+
+def test_signal_kinds_html_escaped_via_closing_html() -> None:
+    """End-to-end version: drop a malicious-looking kind through
+    ``build_doc_content`` and confirm the rendered HTML escapes it."""
+    spec = _full_spec()
+    # Bypass the schema by mutating the frozen dataclass with object.__setattr__.
+    object.__setattr__(spec.signals[0], "kind", "<img src=x onerror=alert(1)>")
+    html_out = render_html_document(build_doc_content(spec, _MQ5_SAMPLE, _build_meta()))
+    assert "<img src=x onerror=alert(1)>" not in html_out
+    assert "&lt;img src=x onerror=alert(1)&gt;" in html_out
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # render_markdown
 # ────────────────────────────────────────────────────────────────────────────
 
