@@ -146,7 +146,7 @@ requirement.lock. Đây cũng là image dùng cho CI `linux-tests` và
 ## 2. Health check `mql5-doctor`
 
 Chạy ngay sau install. Doctor probe Python deps, Wine, MetaEditor,
-PipNormalizer, scaffold tree và 3 MCP server hiện có.
+PipNormalizer, scaffold tree và 4 MCP server hiện có.
 
 ```bash
 python -m vibecodekit_mql5.doctor
@@ -779,9 +779,14 @@ Tham khảo nhanh. Reference đầy đủ ở [USAGE-vi.md](USAGE-vi.md).
 `dashboard`, `wizard`, `pip_normalize`, `async_build`, `onnx_export`,
 `onnx_embed`, `llm_context`, `forge_init`
 
-**Verify (11)** — `compile`, `lint`, `lint_best_practice`,
-`method_hiding_check`, `backtest`, `tester_run`, `walkforward`,
-`monte_carlo`, `overfit_check`, `multibroker`, `fitness`, `mfe_mae`
+**Verify (11)** — `compile`, `lint`, `method_hiding_check`,
+`backtest`, `tester_run`, `walkforward`, `monte_carlo`,
+`overfit_check`, `multibroker`, `fitness`, `mfe_mae`
+
+(`lint_best_practice` tồn tại như mô-đun Python — chạy qua
+`python -m vibecodekit_mql5.lint_best_practice` — nhưng không đăng ký
+là console script trong `pyproject.toml`, nên không đếm vào nhóm
+Verify CLI.)
 
 **RRI methodology (3)** — `rri_bt`, `rri_rr`, `rri_chart`
 

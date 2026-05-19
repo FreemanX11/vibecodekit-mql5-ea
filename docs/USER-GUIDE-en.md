@@ -786,9 +786,14 @@ Quick reference; full docs in [USAGE-en.md](USAGE-en.md).
 `dashboard`, `wizard`, `pip_normalize`, `async_build`, `onnx_export`,
 `onnx_embed`, `llm_context`, `forge_init`
 
-**Verify (11)** — `compile`, `lint`, `lint_best_practice`,
-`method_hiding_check`, `backtest`, `tester_run`, `walkforward`,
-`monte_carlo`, `overfit_check`, `multibroker`, `fitness`, `mfe_mae`
+**Verify (11)** — `compile`, `lint`, `method_hiding_check`,
+`backtest`, `tester_run`, `walkforward`, `monte_carlo`,
+`overfit_check`, `multibroker`, `fitness`, `mfe_mae`
+
+(`lint_best_practice` exists as a Python module — invokable via
+`python -m vibecodekit_mql5.lint_best_practice` — but is not
+registered as a console script in `pyproject.toml`, so it doesn't
+count toward the Verify CLI group.)
 
 **RRI methodology (3)** — `rri_bt`, `rri_rr`, `rri_chart`
 
