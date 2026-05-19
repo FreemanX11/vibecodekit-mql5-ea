@@ -8,7 +8,7 @@ This is the 4th MCP server in the kit, joining `metaeditor-bridge`,
 `mt5-bridge`, and `algo-forge-bridge`. Same wire format — same
 `initialize` / `tools/list` / `tools/call` envelope.
 
-## Tool set (18)
+## Tool set (23)
 
 ### PR-1: prompt → spec → build → permission-gate (4 tools)
 
@@ -43,6 +43,21 @@ This is the 4th MCP server in the kit, joining `metaeditor-bridge`,
 | `verify.mfe_mae`      | `vibecodekit_mql5.mfe_mae.parse_csv` + `compute_stats` | Trade CSV → mean MFE/MAE + Pearson corr with profit. |
 | `verify.overfit`      | `vibecodekit_mql5.overfit_check.evaluate`           | Standalone IS/OOS Sharpe ratio verdict (no XML needed). |
 
+### PR-4: review / RRI suite (5 tools)
+
+Each review tool returns markdown ready to drop into a PR description
+or a `review.md` artefact. The four named reviews each bundle a fixed
+persona set plus default step templates; `rri.persona` is the generic
+single-persona escape hatch.
+
+| Tool | Wraps | One-line purpose |
+|------|-------|------------------|
+| `review.eng`          | `vibecodekit_mql5.review.eng_review.render`   | Engineering review (broker-engineer + devops; default steps: build + verify). |
+| `review.cso`          | `vibecodekit_mql5.review.cso.render`          | Chief Safety Officer review (risk-auditor; default steps: rri + verify). |
+| `review.ceo`          | `vibecodekit_mql5.review.ceo_review.render`   | Executive review (trader + strategy-architect; default steps: vision + refine). |
+| `review.investigate`  | `vibecodekit_mql5.review.investigate.render`  | Open-ended investigation (perf-analyst + strategy-architect; default steps: scan + rri). |
+| `rri.persona`         | `vibecodekit_mql5.review.review.render`       | Generic single-persona drill. Pick 1 of 6 RRI personas × 1 of 8 steps × 1 of 3 modes. Omit `persona` to list IDs. |
+
 ### `ea-spec.yaml` schema additions (PR-2)
 
 Three optional, back-compat blocks were added so AI agents can talk
@@ -60,10 +75,9 @@ existing scaffolds continue to render exactly as before. Templates
 that *do* want to consume these blocks can read them from the
 normalised `EaSpec` dataclass.
 
-Future PRs will extend `DISPATCH` with the remaining review / ship
-tools (`review.eng`, `review.cso`, `review.ceo`, `review.investigate`,
-`rri.persona`, `dashboard.publish`, `forge.pr.create`, …). The wire
-format does not change.
+Future PRs will extend `DISPATCH` with the remaining ship-stage tools
+(`dashboard.publish`, `forge.pr.create`, …). The wire format does
+not change.
 
 ## Launch directly
 

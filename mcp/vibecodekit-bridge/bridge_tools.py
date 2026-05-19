@@ -14,11 +14,13 @@ PR-1 ships four tools — the minimum surface needed to drive the full
 ``verify.broker_safety`` + ``verify.audit``). PR-3 adds the runtime /
 statistical verify suite (``verify.backtest`` + ``verify.walkforward``
 + ``verify.montecarlo`` + ``verify.multibroker`` + ``verify.fitness``
-+ ``verify.mfe_mae`` + ``verify.overfit``).
++ ``verify.mfe_mae`` + ``verify.overfit``). PR-4 adds the review /
+RRI suite (``review.eng`` + ``review.cso`` + ``review.ceo`` +
+``review.investigate`` + ``rri.persona``).
 
-Later PRs will extend ``DISPATCH`` with review personas (``review.*``,
-``rri.persona``) and the ship-stage tools (``dashboard.publish``,
-``forge.pr.create``) without changing the wire format.
+Later PRs will extend ``DISPATCH`` with the ship-stage tools
+(``dashboard.publish``, ``forge.pr.create``) without changing the
+wire format.
 """
 
 from __future__ import annotations
@@ -48,6 +50,17 @@ from vibecodekit_mql5 import (
 )
 from vibecodekit_mql5 import build as build_mod
 from vibecodekit_mql5.permission import orchestrator as orch_mod
+from vibecodekit_mql5.review import (
+    ceo_review as ceo_review_mod,
+    cso as cso_mod,
+    eng_review as eng_review_mod,
+    investigate as investigate_mod,
+    review as review_mod,
+)
+from vibecodekit_mql5.rri import (
+    personas as rri_personas_mod,
+    step_workflow as rri_steps_mod,
+)
 
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
@@ -390,6 +403,141 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "required": ["is_sharpe", "oos_sharpe"],
         },
     },
+    # ── PR-4: review personas + generic RRI ─────────────────────────────────
+    {
+        "name": "review.eng",
+        "description": (
+            "Engineering review (broker-engineer + devops personas). Renders "
+            "the 8-step workflow's BUILD + VERIFY templates plus the active-mode "
+            "RRI questions for the two personas. Returns markdown ready to drop "
+            "into a PR description."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["personal", "team", "enterprise"],
+                    "description": "Audit depth. Default 'personal' (5 q/persona).",
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {"type": "string",
+                              "enum": list(rri_steps_mod.STEPS)},
+                    "description": "Override default step templates (default: build + verify).",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "review.cso",
+        "description": (
+            "Chief Safety Officer review (risk-auditor persona). Single-persona "
+            "drill on the risk envelope — bias toward RRI + VERIFY steps. "
+            "Useful for compliance sign-off before live deployment."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["personal", "team", "enterprise"],
+                    "description": "Audit depth. Default 'personal'.",
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {"type": "string",
+                              "enum": list(rri_steps_mod.STEPS)},
+                    "description": "Override default step templates (default: rri + verify).",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "review.ceo",
+        "description": (
+            "Executive review (trader + strategy-architect personas). Frames "
+            "the EA in business / strategy terms — bias toward VISION + REFINE "
+            "steps. Use when checking whether the strategy edge actually exists."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["personal", "team", "enterprise"],
+                    "description": "Audit depth. Default 'personal'.",
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {"type": "string",
+                              "enum": list(rri_steps_mod.STEPS)},
+                    "description": "Override default step templates (default: vision + refine).",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "review.investigate",
+        "description": (
+            "Open-ended investigation review (perf-analyst + strategy-architect "
+            "personas + SCAN/RRI templates). Use when a backtest, walkforward, "
+            "or live deployment misbehaves and you need to capture hypotheses "
+            "+ the data each one needs."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["personal", "team", "enterprise"],
+                    "description": "Audit depth. Default 'personal'.",
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {"type": "string",
+                              "enum": list(rri_steps_mod.STEPS)},
+                    "description": "Override default step templates (default: scan + rri).",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "rri.persona",
+        "description": (
+            "Generic single-persona RRI review. Pick one of the 6 RRI personas "
+            "(trader, risk-auditor, broker-engineer, strategy-architect, devops, "
+            "perf-analyst), one of the 8 step templates, and an audit mode — "
+            "returns the persona description, active-mode questions, and the "
+            "chosen step template as markdown. Omit 'persona' to get the list "
+            "of valid persona IDs."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "persona": {
+                    "type": "string",
+                    "enum": list(rri_personas_mod.PERSONA_IDS),
+                    "description": "Persona ID. Omit to list available IDs.",
+                },
+                "step": {
+                    "type": "string",
+                    "enum": list(rri_steps_mod.STEPS),
+                    "description": "Step template (default: verify).",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["personal", "team", "enterprise"],
+                    "description": "Audit depth (default: personal).",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -721,6 +869,131 @@ def _tool_verify_overfit(args: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+_VALID_MODES: frozenset[str] = frozenset({"personal", "team", "enterprise"})
+
+
+def _normalise_mode(args: dict[str, Any]) -> tuple[str | None, str | None]:
+    mode = args.get("mode", "personal")
+    if not isinstance(mode, str) or mode not in _VALID_MODES:
+        return None, f"mode must be one of {sorted(_VALID_MODES)}, got {mode!r}"
+    return mode, None
+
+
+def _normalise_steps(
+    args: dict[str, Any], default: tuple[str, ...],
+) -> tuple[tuple[str, ...] | None, str | None]:
+    raw = args.get("steps")
+    if raw is None:
+        return default, None
+    if not isinstance(raw, list) or not all(isinstance(s, str) for s in raw):
+        return None, "steps must be a list of strings"
+    valid = set(rri_steps_mod.STEPS)
+    bad = [s for s in raw if s not in valid]
+    if bad:
+        return None, f"unknown step(s): {bad} (valid: {sorted(valid)})"
+    return tuple(raw), None
+
+
+def _render_review(
+    args: dict[str, Any],
+    *,
+    default_steps: tuple[str, ...],
+    render: Any,
+    personas: list[str],
+) -> dict[str, Any]:
+    mode, err = _normalise_mode(args)
+    if err is not None:
+        return {"ok": False, "error": err}
+    steps, err = _normalise_steps(args, default_steps)
+    if err is not None:
+        return {"ok": False, "error": err}
+    body = render(mode, steps)
+    return {
+        "ok": True,
+        "mode": mode,
+        "steps": list(steps),
+        "personas": personas,
+        "markdown": body,
+    }
+
+
+def _tool_review_eng(args: dict[str, Any]) -> dict[str, Any]:
+    """Engineering review (broker-engineer + devops)."""
+    return _render_review(
+        args,
+        default_steps=eng_review_mod.DEFAULT_STEPS,
+        render=eng_review_mod.render,
+        personas=list(eng_review_mod.PERSONAS),
+    )
+
+
+def _tool_review_cso(args: dict[str, Any]) -> dict[str, Any]:
+    """Chief Safety Officer review (risk-auditor)."""
+    return _render_review(
+        args,
+        default_steps=cso_mod.DEFAULT_STEPS,
+        render=cso_mod.render,
+        personas=[cso_mod.PERSONA],
+    )
+
+
+def _tool_review_ceo(args: dict[str, Any]) -> dict[str, Any]:
+    """Executive review (trader + strategy-architect)."""
+    return _render_review(
+        args,
+        default_steps=ceo_review_mod.DEFAULT_STEPS,
+        render=ceo_review_mod.render,
+        personas=list(ceo_review_mod.PERSONAS),
+    )
+
+
+def _tool_review_investigate(args: dict[str, Any]) -> dict[str, Any]:
+    """Open-ended investigation review (perf-analyst + strategy-architect)."""
+    return _render_review(
+        args,
+        default_steps=investigate_mod.DEFAULT_STEPS,
+        render=investigate_mod.render,
+        personas=list(investigate_mod.PERSONAS),
+    )
+
+
+def _tool_rri_persona(args: dict[str, Any]) -> dict[str, Any]:
+    """Generic single-persona RRI review (mirrors ``mql5-review`` CLI)."""
+    persona = args.get("persona")
+    if persona is None:
+        return {
+            "ok": True,
+            "available_personas": list(rri_personas_mod.PERSONA_IDS),
+            "available_steps": list(rri_steps_mod.STEPS),
+            "available_modes": list(rri_personas_mod.MODES),
+        }
+    if persona not in rri_personas_mod.PERSONA_IDS:
+        return {
+            "ok": False,
+            "error": (
+                f"unknown persona {persona!r} "
+                f"(valid: {list(rri_personas_mod.PERSONA_IDS)})"
+            ),
+        }
+    mode, err = _normalise_mode(args)
+    if err is not None:
+        return {"ok": False, "error": err}
+    step = args.get("step", "verify")
+    if step not in rri_steps_mod.STEPS:
+        return {
+            "ok": False,
+            "error": f"unknown step {step!r} (valid: {list(rri_steps_mod.STEPS)})",
+        }
+    body = review_mod.render(persona, step, mode)
+    return {
+        "ok": True,
+        "persona": persona,
+        "step": step,
+        "mode": mode,
+        "markdown": body,
+    }
+
+
 DISPATCH = {
     "spec.from_prompt":         _tool_spec_from_prompt,
     "spec.validate":            _tool_spec_validate,
@@ -740,4 +1013,9 @@ DISPATCH = {
     "verify.fitness":           _tool_verify_fitness,
     "verify.mfe_mae":           _tool_verify_mfe_mae,
     "verify.overfit":           _tool_verify_overfit,
+    "review.eng":               _tool_review_eng,
+    "review.cso":               _tool_review_cso,
+    "review.ceo":               _tool_review_ceo,
+    "review.investigate":       _tool_review_investigate,
+    "rri.persona":              _tool_rri_persona,
 }
