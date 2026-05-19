@@ -21,6 +21,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+REQUIRED_COLUMNS: tuple[str, ...] = ("profit", "mfe", "mae")
+EXPECTED_HEADER: str = "deal_id,open_time,close_time,magic,type,profit,mfe,mae"
+
+
+class MfeMaeCsvError(ValueError):
+    """Raised when the input CSV is missing required MFE/MAE columns.
+
+    Subclass of :class:`ValueError` so existing ``except ValueError`` blocks
+    (including the ``verify.mfe_mae`` MCP bridge wrapper) keep working.
+    """
+
+
 @dataclass
 class MfeMaeStats:
     n_trades: int
@@ -63,6 +75,14 @@ def parse_csv(text: str) -> list[dict[str, str]]:
 
 
 def compute_stats(rows: list[dict[str, str]]) -> MfeMaeStats:
+    if rows:
+        present = set(rows[0].keys())
+        missing = [c for c in REQUIRED_COLUMNS if c not in present]
+        if missing:
+            raise MfeMaeCsvError(
+                f"csv missing required column(s): {missing}; "
+                f"expected header: {EXPECTED_HEADER}"
+            )
     profits = [float(r["profit"]) for r in rows]
     mfes = [float(r["mfe"]) for r in rows]
     maes = [float(r["mae"]) for r in rows]
@@ -82,9 +102,13 @@ def main(argv: list[str] | None = None) -> int:
 
     path = Path(args.csv_path)
     if not path.exists():
-        print(f"[mfe_mae] not found: {path}", file=sys.stderr)
+        print(json.dumps({"ok": False, "error": f"csv_path not found: {path}"}), file=sys.stderr)
         return 2
-    stats = compute_stats(parse_csv(path.read_text(encoding="utf-8")))
+    try:
+        stats = compute_stats(parse_csv(path.read_text(encoding="utf-8")))
+    except MfeMaeCsvError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+        return 2
     print(json.dumps(stats.to_dict(), indent=2))
     return 0
 
