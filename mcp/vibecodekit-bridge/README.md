@@ -8,7 +8,7 @@ This is the 4th MCP server in the kit, joining `metaeditor-bridge`,
 `mt5-bridge`, and `algo-forge-bridge`. Same wire format — same
 `initialize` / `tools/list` / `tools/call` envelope.
 
-## Tool set (11)
+## Tool set (18)
 
 ### PR-1: prompt → spec → build → permission-gate (4 tools)
 
@@ -31,6 +31,18 @@ This is the 4th MCP server in the kit, joining `metaeditor-bridge`,
 | `verify.broker_safety`      | `vibecodekit_mql5.broker_safety.evaluate`            | fill-policy / lot-step / min-lot / magic-range against a symbol-info JSON. |
 | `verify.audit`              | `vibecodekit_mql5.audit.run_audit`                   | Kit conformance battery (~70 probes). |
 
+### PR-3: runtime / statistical verify suite (7 tools)
+
+| Tool | Wraps | One-line purpose |
+|------|-------|------------------|
+| `verify.backtest`     | `vibecodekit_mql5.backtest.parse_xml_report_file`   | Parse an MT5 tester XML report into a structured dict. |
+| `verify.walkforward`  | `vibecodekit_mql5.walkforward.evaluate`             | OOS/IS Sharpe correlation + PASS/WARN/FAIL verdict (thresholds 0.5/0.3). |
+| `verify.montecarlo`   | `vibecodekit_mql5.monte_carlo.evaluate`             | Bootstrap DD p50/p75/p95 + PASS/FAIL verdict (p95 ≤ 1.5× reported_dd). |
+| `verify.multibroker`  | `vibecodekit_mql5.multibroker.evaluate`             | PF CV / Sharpe stdev / DD diff across N broker reports. |
+| `verify.fitness`      | `vibecodekit_mql5.fitness.get` / `list_templates`   | Look up an `OnTester()` template (sharpe/sortino/profit-dd/expectancy/walkforward). |
+| `verify.mfe_mae`      | `vibecodekit_mql5.mfe_mae.parse_csv` + `compute_stats` | Trade CSV → mean MFE/MAE + Pearson corr with profit. |
+| `verify.overfit`      | `vibecodekit_mql5.overfit_check.evaluate`           | Standalone IS/OOS Sharpe ratio verdict (no XML needed). |
+
 ### `ea-spec.yaml` schema additions (PR-2)
 
 Three optional, back-compat blocks were added so AI agents can talk
@@ -48,12 +60,10 @@ existing scaffolds continue to render exactly as before. Templates
 that *do* want to consume these blocks can read them from the
 normalised `EaSpec` dataclass.
 
-Future PRs will extend `DISPATCH` with the remaining verify / review /
-backtest tools (`verify.backtest`, `verify.walkforward`,
-`verify.montecarlo`, `verify.multibroker`, `verify.fitness`,
-`verify.mfe_mae`, `verify.overfit`, `review.eng`, `review.cso`,
-`review.ceo`, `review.investigate`, `rri.persona`,
-`dashboard.publish`, …). The wire format does not change.
+Future PRs will extend `DISPATCH` with the remaining review / ship
+tools (`review.eng`, `review.cso`, `review.ceo`, `review.investigate`,
+`rri.persona`, `dashboard.publish`, `forge.pr.create`, …). The wire
+format does not change.
 
 ## Launch directly
 
