@@ -419,7 +419,7 @@ ALGO_FORGE_API_KEY=xxx python mcp/algo-forge-bridge/server.py
 
 ### 5.4. vibecodekit-bridge
 
-11 tools across two PRs. Lets an AI coding agent (Codex CLI / Claude
+18 tools across three PRs. Lets an AI coding agent (Codex CLI / Claude
 Code / Cursor / Devin / Claude Desktop) drive the full `prompt → spec
 → build → verify → permission-gate` loop via JSON-RPC. The wire format
 is stable across PRs — future ones extend `DISPATCH` without breaking
@@ -428,10 +428,18 @@ clients.
 **PR-1 (prompt → spec → build → permission-gate):**
 `spec.from_prompt`, `spec.validate`, `build.auto`, `verify.permission`.
 
-**PR-2 (verify suite):** `verify.lint` (8 critical AP),
+**PR-2 (static-analysis verify suite):** `verify.lint` (8 critical AP),
 `verify.lint_best_practice` (14 WARN AP), `verify.method_hiding`,
 `verify.trader17`, `verify.compile`, `verify.broker_safety`,
 `verify.audit`.
+
+**PR-3 (runtime / statistical verify suite):** `verify.backtest`
+(MT5 tester XML report parser), `verify.walkforward` (OOS/IS Sharpe
+correlation + verdict), `verify.montecarlo` (bootstrap DD stress
+test), `verify.multibroker` (N-broker stability — PF CV / Sharpe
+stdev / DD diff), `verify.fitness` (lookup tester `OnTester()`
+template), `verify.mfe_mae` (excursion CSV stats), `verify.overfit`
+(IS/OOS Sharpe ratio verdict — no XML required).
 
 **Spec schema additions (PR-2):** three optional, back-compat blocks
 on `ea-spec.yaml` — `prop_firm` (FTMO/MFF DD limits + news block +

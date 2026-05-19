@@ -6,15 +6,19 @@ Thin shims over the kit's public modules so the MCP layer stays under
 ``tools/list`` knows exactly how to call them.
 
 PR-1 ships four tools — the minimum surface needed to drive the full
-``prompt → spec → build → permission gate`` loop from a CLI agent:
+``prompt → spec → build → permission gate`` loop from a CLI agent
+(``spec.from_prompt``, ``spec.validate``, ``build.auto``,
+``verify.permission``). PR-2 adds the static-analysis verify suite
+(``verify.lint`` + ``verify.lint_best_practice`` +
+``verify.method_hiding`` + ``verify.trader17`` + ``verify.compile`` +
+``verify.broker_safety`` + ``verify.audit``). PR-3 adds the runtime /
+statistical verify suite (``verify.backtest`` + ``verify.walkforward``
++ ``verify.montecarlo`` + ``verify.multibroker`` + ``verify.fitness``
++ ``verify.mfe_mae`` + ``verify.overfit``).
 
-* ``spec.from_prompt``     wrap ``spec_from_prompt.parse``
-* ``spec.validate``        wrap ``spec_schema.validate``
-* ``build.auto``           wrap ``auto_build.run_pipeline``
-* ``verify.permission``    wrap ``permission.orchestrator.run``
-
-Later PRs will extend ``DISPATCH`` with the remaining ~20 verify /
-review / backtest tools without changing the wire format.
+Later PRs will extend ``DISPATCH`` with review personas (``review.*``,
+``rri.persona``) and the ship-stage tools (``dashboard.publish``,
+``forge.pr.create``) without changing the wire format.
 """
 
 from __future__ import annotations
@@ -26,14 +30,21 @@ from typing import Any
 from vibecodekit_mql5 import (
     audit as audit_mod,
     auto_build,
+    backtest as backtest_mod,
     broker_safety as broker_safety_mod,
     compile as compile_mod,
+    fitness as fitness_mod,
     lint as lint_mod,
     lint_best_practice as lint_bp_mod,
     method_hiding_check as method_hiding_mod,
+    mfe_mae as mfe_mae_mod,
+    monte_carlo as monte_carlo_mod,
+    multibroker as multibroker_mod,
+    overfit_check as overfit_mod,
     spec_from_prompt,
     spec_schema,
     trader_check as trader_check_mod,
+    walkforward as walkforward_mod,
 )
 from vibecodekit_mql5 import build as build_mod
 from vibecodekit_mql5.permission import orchestrator as orch_mod
@@ -229,6 +240,156 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
+    # ─────────────────────────────────────────────────────────────────────
+    # PR-3 — runtime / statistical verify suite
+    # ─────────────────────────────────────────────────────────────────────
+    {
+        "name": "verify.backtest",
+        "description": (
+            "Parse an MT5 Strategy Tester XML report into a structured "
+            "BacktestResult dict (PF, Sharpe, GHPR, DD, total_trades, MFE/MAE "
+            "correlation, broker_digits, pre-start shift, …). Hermetic — only "
+            "reads the XML file; no MT5 required. Use as the building block "
+            "for verify.walkforward, verify.multibroker, verify.overfit."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "xml_report_path": {
+                    "type": "string",
+                    "description": "Absolute path to the tester report XML file emitted by MT5.",
+                },
+            },
+            "required": ["xml_report_path"],
+        },
+    },
+    {
+        "name": "verify.walkforward",
+        "description": (
+            "Walk-forward stability check: parse the in-sample + out-of-sample "
+            "tester XML reports MT5 emits under Forward 1/4 mode, then compute "
+            "OOS/IS Sharpe correlation and a PASS / WARN / FAIL verdict "
+            "(thresholds 0.5 / 0.3)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "is_xml_path":  {"type": "string", "description": "In-sample XML report."},
+                "oos_xml_path": {"type": "string", "description": "Out-of-sample XML report."},
+            },
+            "required": ["is_xml_path", "oos_xml_path"],
+        },
+    },
+    {
+        "name": "verify.montecarlo",
+        "description": (
+            "Monte-Carlo drawdown stress test. Bootstraps n_sims random "
+            "permutations of the supplied returns series, returns the p50/p75/"
+            "p95 drawdown percentiles, and a PASS / FAIL verdict (p95 ≤ 1.5× "
+            "reported_dd). Returns provided inline or read from a CSV path."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "returns": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "description": "Per-trade returns (P&L deltas). Mutually exclusive with returns_csv_path.",
+                },
+                "returns_csv_path": {
+                    "type": "string",
+                    "description": "CSV file: one numeric column. Mutually exclusive with returns.",
+                },
+                "reported_dd": {
+                    "type": "number",
+                    "description": "Reported drawdown percentage from the original backtest.",
+                },
+                "n_sims": {"type": "integer", "description": "Number of bootstrap simulations. Default 1000."},
+                "seed":   {"type": "integer", "description": "Optional RNG seed for reproducibility."},
+            },
+            "required": ["reported_dd"],
+        },
+    },
+    {
+        "name": "verify.multibroker",
+        "description": (
+            "Aggregate stability across N tester XML reports from different "
+            "brokers / symbols. Reports profit-factor coefficient of variation, "
+            "Sharpe stdev, DD spread, optional PipNorm journal-presence check, "
+            "and a PASS / FAIL verdict against the kit's standard thresholds "
+            "(PF CV ≤ 0.30, Sharpe stdev ≤ 0.20, DD diff ≤ 5pp)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "report_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of tester XML report paths (≥ 2).",
+                },
+                "journal_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of journal txt files to grep for '[PipNorm]'.",
+                },
+            },
+            "required": ["report_paths"],
+        },
+    },
+    {
+        "name": "verify.fitness",
+        "description": (
+            "Return the MQL5 OnTester() expression for a named fitness template "
+            "(sharpe / sortino / profit-dd / expectancy / walkforward) so a "
+            "scaffold or autobuild step can paste it directly. Omit `template` "
+            "to receive the sorted list of valid template names."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "template": {
+                    "type": "string",
+                    "description": "Template name. Omit to list all templates.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "verify.mfe_mae",
+        "description": (
+            "Maximum-favorable / maximum-adverse excursion analysis. Reads a "
+            "CSV with profit/mfe/mae columns (path or inline text) and returns "
+            "trade count + mean MFE/MAE + Pearson correlations with profit. "
+            "Use when checking SL/TP placement against realised excursions."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "csv_path": {"type": "string", "description": "Path to CSV with header row: profit,mfe,mae."},
+                "csv_text": {"type": "string", "description": "Inline CSV text (mutually exclusive with csv_path)."},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "verify.overfit",
+        "description": (
+            "Overfitting verdict from a pair of in-sample / out-of-sample "
+            "Sharpe ratios. Computes OOS/IS ratio and returns a PASS / WARN / "
+            "FAIL verdict (thresholds 0.7 / 0.5). Lightweight standalone check "
+            "when you already have the two Sharpe numbers and don't need to "
+            "re-parse the XML reports."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "is_sharpe":  {"type": "number", "description": "In-sample Sharpe ratio."},
+                "oos_sharpe": {"type": "number", "description": "Out-of-sample Sharpe ratio."},
+            },
+            "required": ["is_sharpe", "oos_sharpe"],
+        },
+    },
 ]
 
 
@@ -413,6 +574,153 @@ def _tool_verify_permission(args: dict[str, Any]) -> dict[str, Any]:
     return report.to_dict()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-3 — runtime / statistical verify suite
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _tool_verify_backtest(args: dict[str, Any]) -> dict[str, Any]:
+    """Parse an MT5 tester XML report into a structured BacktestResult dict."""
+    xml_path = Path(args["xml_report_path"]).resolve()
+    if not xml_path.is_file():
+        return {"ok": False, "error": f"xml_report_path not found: {xml_path}"}
+    try:
+        result = backtest_mod.parse_xml_report_file(xml_path)
+    except Exception as exc:  # noqa: BLE001 — surface parser errors structurally
+        return {"ok": False, "error": f"parse failed: {exc}"}
+    return {"ok": True, "report": result.to_dict()}
+
+
+def _tool_verify_walkforward(args: dict[str, Any]) -> dict[str, Any]:
+    """OOS/IS Sharpe correlation + verdict from a pair of tester XML reports."""
+    is_path  = Path(args["is_xml_path"]).resolve()
+    oos_path = Path(args["oos_xml_path"]).resolve()
+    for label, p in (("is_xml_path", is_path), ("oos_xml_path", oos_path)):
+        if not p.is_file():
+            return {"ok": False, "error": f"{label} not found: {p}"}
+    try:
+        is_r  = backtest_mod.parse_xml_report_file(is_path)
+        oos_r = backtest_mod.parse_xml_report_file(oos_path)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"parse failed: {exc}"}
+    result = walkforward_mod.evaluate(is_r, oos_r)
+    payload = result.to_dict()
+    payload["ok"] = result.verdict == "PASS"
+    return payload
+
+
+def _tool_verify_montecarlo(args: dict[str, Any]) -> dict[str, Any]:
+    """Bootstrap drawdown percentiles + PASS/FAIL verdict."""
+    returns = args.get("returns")
+    returns_csv_path = args.get("returns_csv_path")
+    if returns is None and not returns_csv_path:
+        return {"ok": False, "error": "either 'returns' or 'returns_csv_path' is required"}
+    if returns is not None and returns_csv_path:
+        return {"ok": False, "error": "'returns' and 'returns_csv_path' are mutually exclusive"}
+    if returns_csv_path:
+        path = Path(returns_csv_path).resolve()
+        if not path.is_file():
+            return {"ok": False, "error": f"returns_csv_path not found: {path}"}
+        returns = monte_carlo_mod._read_returns_csv(path)
+    if not isinstance(returns, list) or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in returns):
+        return {"ok": False, "error": "'returns' must be a list of numbers"}
+    if not returns:
+        return {"ok": False, "error": "'returns' is empty"}
+    try:
+        reported_dd = float(args["reported_dd"])
+    except (KeyError, TypeError, ValueError):
+        return {"ok": False, "error": "'reported_dd' must be a number"}
+    n_sims = int(args.get("n_sims", 1000))
+    seed   = args.get("seed")
+    if n_sims < 1:
+        return {"ok": False, "error": "'n_sims' must be ≥ 1"}
+    result = monte_carlo_mod.evaluate(
+        [float(x) for x in returns],
+        reported_dd,
+        n_sims=n_sims,
+        seed=seed,
+    )
+    payload = result.to_dict()
+    payload["ok"] = result.verdict == "PASS"
+    return payload
+
+
+def _tool_verify_multibroker(args: dict[str, Any]) -> dict[str, Any]:
+    """Aggregate stability across N tester XML reports."""
+    paths = args.get("report_paths") or []
+    if not isinstance(paths, list) or len(paths) < 2:
+        return {"ok": False, "error": "'report_paths' must be a list with at least 2 entries"}
+    reports: list[backtest_mod.BacktestResult] = []
+    for p in paths:
+        path = Path(p).resolve()
+        if not path.is_file():
+            return {"ok": False, "error": f"report_paths entry not found: {path}"}
+        try:
+            reports.append(backtest_mod.parse_xml_report_file(path))
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"parse failed for {path}: {exc}"}
+    journals = args.get("journal_paths") or None
+    if journals is not None and not isinstance(journals, list):
+        return {"ok": False, "error": "'journal_paths' must be a list of strings"}
+    result = multibroker_mod.evaluate(reports, journals=journals)
+    payload = result.to_dict()
+    payload["ok"] = result.verdict == "PASS"
+    return payload
+
+
+def _tool_verify_fitness(args: dict[str, Any]) -> dict[str, Any]:
+    """Look up a fitness template by name, or list available templates."""
+    name = args.get("template")
+    if not name:
+        return {"ok": True, "templates": fitness_mod.list_templates()}
+    try:
+        expr = fitness_mod.get(name)
+    except KeyError:
+        return {
+            "ok": False,
+            "error": f"unknown template: {name!r}",
+            "available": fitness_mod.list_templates(),
+        }
+    return {"ok": True, "template": name, "expression": expr}
+
+
+def _tool_verify_mfe_mae(args: dict[str, Any]) -> dict[str, Any]:
+    """MFE/MAE excursion statistics from a trades CSV (path or inline text)."""
+    csv_path = args.get("csv_path")
+    csv_text = args.get("csv_text")
+    if csv_path and csv_text:
+        return {"ok": False, "error": "'csv_path' and 'csv_text' are mutually exclusive"}
+    if not csv_path and not csv_text:
+        return {"ok": False, "error": "either 'csv_path' or 'csv_text' is required"}
+    if csv_path:
+        path = Path(csv_path).resolve()
+        if not path.is_file():
+            return {"ok": False, "error": f"csv_path not found: {path}"}
+        csv_text = path.read_text(encoding="utf-8", errors="replace")
+    rows = mfe_mae_mod.parse_csv(csv_text or "")
+    if not rows:
+        return {"ok": False, "error": "no trade rows parsed from CSV"}
+    try:
+        stats = mfe_mae_mod.compute_stats(rows)
+    except (KeyError, ValueError) as exc:
+        return {"ok": False, "error": f"compute_stats failed: {exc} (expected header: profit,mfe,mae)"}
+    payload = stats.to_dict()
+    payload["ok"] = True
+    return payload
+
+
+def _tool_verify_overfit(args: dict[str, Any]) -> dict[str, Any]:
+    """IS/OOS Sharpe ratio + PASS/WARN/FAIL verdict."""
+    try:
+        is_sharpe  = float(args["is_sharpe"])
+        oos_sharpe = float(args["oos_sharpe"])
+    except (KeyError, TypeError, ValueError):
+        return {"ok": False, "error": "'is_sharpe' and 'oos_sharpe' must be numbers"}
+    result = overfit_mod.evaluate(is_sharpe, oos_sharpe)
+    payload = result.to_dict()
+    payload["ok"] = result.verdict == "PASS"
+    return payload
+
+
 DISPATCH = {
     "spec.from_prompt":         _tool_spec_from_prompt,
     "spec.validate":            _tool_spec_validate,
@@ -425,4 +733,11 @@ DISPATCH = {
     "verify.compile":           _tool_verify_compile,
     "verify.broker_safety":     _tool_verify_broker_safety,
     "verify.audit":             _tool_verify_audit,
+    "verify.backtest":          _tool_verify_backtest,
+    "verify.walkforward":       _tool_verify_walkforward,
+    "verify.montecarlo":        _tool_verify_montecarlo,
+    "verify.multibroker":       _tool_verify_multibroker,
+    "verify.fitness":           _tool_verify_fitness,
+    "verify.mfe_mae":           _tool_verify_mfe_mae,
+    "verify.overfit":           _tool_verify_overfit,
 }

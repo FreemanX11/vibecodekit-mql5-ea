@@ -2,10 +2,13 @@
 
 Mirrors ``test_mcp_servers.py``. The bridge ships 4 PR-1 tools
 (``spec.from_prompt``, ``spec.validate``, ``build.auto``,
-``verify.permission``) plus 7 PR-2 verify tools (``verify.lint``,
+``verify.permission``), 7 PR-2 verify tools (``verify.lint``,
 ``verify.lint_best_practice``, ``verify.method_hiding``,
 ``verify.trader17``, ``verify.compile``, ``verify.broker_safety``,
-``verify.audit``); these tests cover the JSON-RPC envelope, the
+``verify.audit``), and 7 PR-3 runtime/statistical tools
+(``verify.backtest``, ``verify.walkforward``, ``verify.montecarlo``,
+``verify.multibroker``, ``verify.fitness``, ``verify.mfe_mae``,
+``verify.overfit``). These tests cover the JSON-RPC envelope, the
 tool list shape, and a hermetic round-trip through every tool.
 """
 
@@ -402,3 +405,231 @@ def test_spec_validate_backcompat_no_extension_blocks() -> None:
     assert "prop_firm" not in payload["spec"]
     assert "time_exit" not in payload["spec"]
     assert "stealth" not in payload["spec"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-3: 7 runtime / statistical verify tools
+# ─────────────────────────────────────────────────────────────────────────────
+
+FIXTURES = REPO_ROOT / "tests" / "fixtures"
+EURUSD_XML = FIXTURES / "tester_report_eurusd_h1.xml"
+USDJPY_XML = FIXTURES / "tester_report_usdjpy_h1.xml"
+XAUUSD_XML = FIXTURES / "tester_report_xauusd_h1_3d.xml"
+
+
+def test_tools_list_includes_pr3_runtime_tools() -> None:
+    srv = _load_server()
+    resp = srv.handle({"jsonrpc": "2.0", "id": 40, "method": "tools/list"})
+    names = {t["name"] for t in resp["result"]["tools"]}
+    assert {
+        "verify.backtest", "verify.walkforward", "verify.montecarlo",
+        "verify.multibroker", "verify.fitness", "verify.mfe_mae",
+        "verify.overfit",
+    } <= names
+    # PR-1 + PR-2 + PR-3 = 18 tools total. Use ≤ to allow future PRs.
+    assert len(names) >= 18
+
+
+def test_verify_backtest_parses_eurusd_fixture() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.backtest", {"xml_report_path": str(EURUSD_XML)})
+    assert payload["ok"] is True
+    r = payload["report"]
+    assert r["symbol"] == "EURUSD"
+    assert r["profit_factor"] == 1.78
+    assert r["sharpe"] == 0.42
+    assert r["total_trades"] == 342
+
+
+def test_verify_backtest_missing_file() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.backtest",
+                    {"xml_report_path": "/tmp/does-not-exist.xml"})
+    assert payload["ok"] is False
+    assert "not found" in payload["error"]
+
+
+def test_verify_walkforward_correlates_eurusd_and_usdjpy() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.walkforward", {
+        "is_xml_path":  str(EURUSD_XML),
+        "oos_xml_path": str(USDJPY_XML),
+    })
+    assert "is_sharpe" in payload
+    assert "oos_sharpe" in payload
+    assert "correlation" in payload
+    assert payload["verdict"] in ("PASS", "WARN", "FAIL")
+    # ok mirrors verdict.
+    assert payload["ok"] is (payload["verdict"] == "PASS")
+
+
+def test_verify_walkforward_missing_file() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.walkforward", {
+        "is_xml_path":  "/tmp/missing-is.xml",
+        "oos_xml_path": str(USDJPY_XML),
+    })
+    assert payload["ok"] is False
+    assert "is_xml_path" in payload["error"]
+
+
+def test_verify_montecarlo_inline_returns_seeded() -> None:
+    srv = _load_server()
+    returns = [10.0, -5.0, 8.0, -3.0, 12.0, -7.0, 6.0] * 10
+    payload = _call(srv, "verify.montecarlo", {
+        "returns": returns, "reported_dd": 30.0,
+        "n_sims": 200, "seed": 42,
+    })
+    # Verdict depends on bootstrap distribution vs threshold; ok mirrors it.
+    assert payload["verdict"] in ("PASS", "FAIL")
+    assert payload["n_sims"] == 200
+    assert payload["p95_dd"] >= payload["p50_dd"]
+    assert payload["ok"] is (payload["verdict"] == "PASS")
+
+
+def test_verify_montecarlo_requires_returns_source() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.montecarlo", {"reported_dd": 10.0})
+    assert payload["ok"] is False
+    assert "returns" in payload["error"]
+
+
+def test_verify_montecarlo_rejects_both_sources() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.montecarlo", {
+        "returns": [1.0, -1.0], "returns_csv_path": "/tmp/x.csv",
+        "reported_dd": 5.0,
+    })
+    assert payload["ok"] is False
+    assert "mutually exclusive" in payload["error"]
+
+
+def test_verify_montecarlo_rejects_non_numeric_returns() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.montecarlo", {
+        "returns": [1.0, "bad"], "reported_dd": 5.0,
+    })
+    assert payload["ok"] is False
+    assert "list of numbers" in payload["error"]
+
+
+def test_verify_multibroker_three_fixtures() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.multibroker", {
+        "report_paths": [str(EURUSD_XML), str(USDJPY_XML), str(XAUUSD_XML)],
+    })
+    for key in ("pf_mean", "pf_stdev", "pf_cv", "sharpe_mean", "sharpe_stdev",
+                "dd_diff", "verdict"):
+        assert key in payload, key
+    assert payload["verdict"] in ("PASS", "FAIL")
+    assert payload["ok"] is (payload["verdict"] == "PASS")
+
+
+def test_verify_multibroker_requires_at_least_two_paths() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.multibroker", {
+        "report_paths": [str(EURUSD_XML)],
+    })
+    assert payload["ok"] is False
+    assert "at least 2" in payload["error"]
+
+
+def test_verify_multibroker_rejects_missing_file() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.multibroker", {
+        "report_paths": [str(EURUSD_XML), "/tmp/bogus.xml"],
+    })
+    assert payload["ok"] is False
+    assert "not found" in payload["error"]
+
+
+def test_verify_fitness_lists_when_no_template() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.fitness", {})
+    assert payload["ok"] is True
+    # Kit ships 5 templates today; assert all five are present.
+    for name in ("sharpe", "sortino", "profit-dd", "expectancy", "walkforward"):
+        assert name in payload["templates"], name
+
+
+def test_verify_fitness_returns_expression_for_named_template() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.fitness", {"template": "sharpe"})
+    assert payload["ok"] is True
+    assert payload["template"] == "sharpe"
+    assert "TesterStatistics" in payload["expression"]
+    assert "STAT_SHARPE_RATIO" in payload["expression"]
+
+
+def test_verify_fitness_unknown_template() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.fitness", {"template": "no_such_template"})
+    assert payload["ok"] is False
+    assert "unknown" in payload["error"]
+    assert "sharpe" in payload["available"]
+
+
+def test_verify_mfe_mae_from_inline_csv() -> None:
+    srv = _load_server()
+    csv_text = (
+        "profit,mfe,mae\n"
+        "10,15,2\n-5,3,8\n8,12,3\n-2,4,5\n6,10,4\n"
+    )
+    payload = _call(srv, "verify.mfe_mae", {"csv_text": csv_text})
+    assert payload["ok"] is True
+    assert payload["n_trades"] == 5
+    assert -1.0 <= payload["mfe_profit_corr"] <= 1.0
+    assert -1.0 <= payload["mae_profit_corr"] <= 1.0
+
+
+def test_verify_mfe_mae_requires_one_source() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.mfe_mae", {})
+    assert payload["ok"] is False
+    assert "required" in payload["error"]
+
+
+def test_verify_mfe_mae_rejects_both_sources() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.mfe_mae", {
+        "csv_path": "/tmp/x.csv", "csv_text": "profit,mfe,mae\n1,2,3\n",
+    })
+    assert payload["ok"] is False
+    assert "mutually exclusive" in payload["error"]
+
+
+def test_verify_mfe_mae_rejects_bad_header() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.mfe_mae", {
+        "csv_text": "wrong,header,here\n1,2,3\n",
+    })
+    assert payload["ok"] is False
+    assert "expected header" in payload["error"]
+
+
+def test_verify_overfit_pass_threshold() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.overfit", {
+        "is_sharpe": 1.0, "oos_sharpe": 0.8,
+    })
+    assert payload["ratio"] == 0.8
+    assert payload["verdict"] == "PASS"
+    assert payload["ok"] is True
+
+
+def test_verify_overfit_fail_threshold() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.overfit", {
+        "is_sharpe": 1.0, "oos_sharpe": 0.1,
+    })
+    assert payload["verdict"] == "FAIL"
+    assert payload["ok"] is False
+
+
+def test_verify_overfit_rejects_non_numeric() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.overfit", {
+        "is_sharpe": "not-a-number", "oos_sharpe": 0.5,
+    })
+    assert payload["ok"] is False
+    assert "must be numbers" in payload["error"]

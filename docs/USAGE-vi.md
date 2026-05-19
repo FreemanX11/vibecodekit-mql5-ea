@@ -486,7 +486,7 @@ ALGO_FORGE_API_KEY=xxx python mcp/algo-forge-bridge/server.py
 
 ### 5.4. vibecodekit-bridge
 
-11 tool qua 2 PR. Cho phép AI coding agent (Codex CLI / Claude Code /
+18 tool qua 3 PR. Cho phép AI coding agent (Codex CLI / Claude Code /
 Cursor / Devin / Claude Desktop) gọi thẳng vào pipeline `prompt → spec
 → build → verify → permission gate` qua JSON-RPC. Wire format ổn định
 giữa các PR — PR sau chỉ mở rộng `DISPATCH`.
@@ -494,10 +494,18 @@ giữa các PR — PR sau chỉ mở rộng `DISPATCH`.
 **PR-1 (prompt → spec → build → permission gate):**
 `spec.from_prompt`, `spec.validate`, `build.auto`, `verify.permission`.
 
-**PR-2 (verify suite):** `verify.lint` (8 AP critical),
+**PR-2 (static-analysis verify suite):** `verify.lint` (8 AP critical),
 `verify.lint_best_practice` (14 AP WARN), `verify.method_hiding`,
 `verify.trader17`, `verify.compile`, `verify.broker_safety`,
 `verify.audit`.
+
+**PR-3 (runtime / statistical verify suite):** `verify.backtest`
+(parser XML report của MT5 tester), `verify.walkforward` (tương quan
+Sharpe OOS/IS + verdict), `verify.montecarlo` (stress test DD theo
+bootstrap), `verify.multibroker` (ổn định N-broker: PF CV / Sharpe
+stdev / DD diff), `verify.fitness` (tra cứu template `OnTester()`),
+`verify.mfe_mae` (thống kê excursion từ CSV), `verify.overfit` (verdict
+Sharpe IS/OOS — không cần XML).
 
 **Schema `ea-spec.yaml` mở rộng (PR-2):** thêm 3 block optional, full
 back-compat — `prop_firm` (DD limits + news block + weekend-flat cho
