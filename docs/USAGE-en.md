@@ -419,12 +419,25 @@ ALGO_FORGE_API_KEY=xxx python mcp/algo-forge-bridge/server.py
 
 ### 5.4. vibecodekit-bridge
 
-4 tools (PR-1 surface): `spec.from_prompt`, `spec.validate`,
-`build.auto`, `verify.permission`. Lets an AI coding agent
-(Codex CLI / Claude Code / Cursor / Devin / Claude Desktop) drive the
-full `prompt → spec → build → permission-gate` loop via JSON-RPC. Future
-PRs will extend this DISPATCH with the kit's verify / review / backtest
-surface; the wire format does not change.
+11 tools across two PRs. Lets an AI coding agent (Codex CLI / Claude
+Code / Cursor / Devin / Claude Desktop) drive the full `prompt → spec
+→ build → verify → permission-gate` loop via JSON-RPC. The wire format
+is stable across PRs — future ones extend `DISPATCH` without breaking
+clients.
+
+**PR-1 (prompt → spec → build → permission-gate):**
+`spec.from_prompt`, `spec.validate`, `build.auto`, `verify.permission`.
+
+**PR-2 (verify suite):** `verify.lint` (8 critical AP),
+`verify.lint_best_practice` (14 WARN AP), `verify.method_hiding`,
+`verify.trader17`, `verify.compile`, `verify.broker_safety`,
+`verify.audit`.
+
+**Spec schema additions (PR-2):** three optional, back-compat blocks
+on `ea-spec.yaml` — `prop_firm` (FTMO/MFF DD limits + news block +
+weekend-flat), `time_exit` (Friday close, max trade duration, session
+windows), `stealth` (slippage / comment / lot-jitter randomisation,
+split orders). Specs that don't supply them validate unchanged.
 
 ```bash
 python mcp/vibecodekit-bridge/server.py

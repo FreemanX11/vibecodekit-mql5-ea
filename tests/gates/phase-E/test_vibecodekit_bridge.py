@@ -1,8 +1,11 @@
 """Phase E unit tests — vibecodekit-bridge MCP server.
 
-Mirrors ``test_mcp_servers.py``. The bridge ships four tools in PR-1
+Mirrors ``test_mcp_servers.py``. The bridge ships 4 PR-1 tools
 (``spec.from_prompt``, ``spec.validate``, ``build.auto``,
-``verify.permission``); these tests cover the JSON-RPC envelope, the
+``verify.permission``) plus 7 PR-2 verify tools (``verify.lint``,
+``verify.lint_best_practice``, ``verify.method_hiding``,
+``verify.trader17``, ``verify.compile``, ``verify.broker_safety``,
+``verify.audit``); these tests cover the JSON-RPC envelope, the
 tool list shape, and a hermetic round-trip through every tool.
 """
 
@@ -196,3 +199,206 @@ def test_verify_permission_missing_file() -> None:
     srv = _load_server()
     payload = _call(srv, "verify.permission", {"source": "/tmp/does-not-exist.mq5"})
     assert payload["ok"] is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-2: 7 verify tools
+# ─────────────────────────────────────────────────────────────────────────────
+
+_AP1_SOURCE = (
+    "#property strict\n"
+    "void OnTick(){ trade.Buy(0.1); }\n"
+)
+
+
+def test_tools_list_includes_pr2_verify_tools() -> None:
+    srv = _load_server()
+    resp = srv.handle({"jsonrpc": "2.0", "id": 20, "method": "tools/list"})
+    names = {t["name"] for t in resp["result"]["tools"]}
+    assert {
+        "verify.lint", "verify.lint_best_practice", "verify.method_hiding",
+        "verify.trader17", "verify.compile", "verify.broker_safety",
+        "verify.audit",
+    } <= names
+
+
+def test_verify_lint_flags_ap1_missing_sl() -> None:
+    srv = _load_server()
+    with tempfile.TemporaryDirectory() as tmp:
+        mq5 = Path(tmp) / "ap1.mq5"
+        mq5.write_text(_AP1_SOURCE, encoding="utf-8")
+        payload = _call(srv, "verify.lint", {"source": str(mq5)})
+        assert payload["ok"] is False
+        codes = [e["code"] for e in payload["errors"]]
+        assert "AP-1" in codes
+        assert payload["n_errors"] >= 1
+
+
+def test_verify_lint_missing_file() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.lint", {"source": "/tmp/does-not-exist.mq5"})
+    assert payload["ok"] is False
+    assert "not found" in payload["error"]
+
+
+def test_verify_lint_best_practice_returns_grouped_findings() -> None:
+    srv = _load_server()
+    with tempfile.TemporaryDirectory() as tmp:
+        mq5 = Path(tmp) / "ap1.mq5"
+        mq5.write_text(_AP1_SOURCE, encoding="utf-8")
+        payload = _call(srv, "verify.lint_best_practice", {"source": str(mq5)})
+        # WARN-only tier: ok is informational only and stays True.
+        assert payload["ok"] is True
+        assert "by_code" in payload
+        # All 14 AP codes from the WARN tier must appear as keys.
+        for code in ("AP-2", "AP-4", "AP-6", "AP-7", "AP-8", "AP-9", "AP-10",
+                     "AP-11", "AP-12", "AP-13", "AP-14", "AP-16", "AP-19",
+                     "AP-22"):
+            assert code in payload["by_code"], code
+
+
+def test_verify_method_hiding_clean_file_passes() -> None:
+    srv = _load_server()
+    with tempfile.TemporaryDirectory() as tmp:
+        mq5 = Path(tmp) / "clean.mq5"
+        mq5.write_text("void OnTick(){}\n", encoding="utf-8")
+        payload = _call(srv, "verify.method_hiding",
+                        {"source": str(mq5), "target_build": 5260})
+        assert payload["ok"] is True
+        assert payload["issues"] == []
+        assert payload["target_build"] == 5260
+
+
+def test_verify_trader17_returns_per_check_results() -> None:
+    srv = _load_server()
+    with tempfile.TemporaryDirectory() as tmp:
+        mq5 = Path(tmp) / "skel.mq5"
+        mq5.write_text(_AP1_SOURCE, encoding="utf-8")
+        payload = _call(srv, "verify.trader17",
+                        {"source": str(mq5), "mode": "personal"})
+        # Empty skeleton fails the 17-point checklist — ok is False.
+        assert payload["ok"] is False
+        assert payload["mode"] == "personal"
+        assert "summary" in payload and "/17" in payload["summary"]
+        # Every check key must have a verdict.
+        for verdict in payload["checks"].values():
+            assert verdict in ("PASS", "WARN", "N/A", "FAIL")
+
+
+def test_verify_broker_safety_flags_missing_fields() -> None:
+    srv = _load_server()
+    with tempfile.TemporaryDirectory() as tmp:
+        mq5 = Path(tmp) / "ap1.mq5"
+        mq5.write_text(_AP1_SOURCE, encoding="utf-8")
+        payload = _call(srv, "verify.broker_safety", {
+            "source": str(mq5),
+            "symbol_info": {"filling_modes": ["FOK"],
+                            "volume_min": 0.01, "volume_step": 0.01},
+        })
+        # No InpLot / InpMagic / ORDER_FILLING_* declared → all flags WARN.
+        assert payload["ok"] is False
+        for flag in ("fill_policy_supported", "min_lot_respected",
+                     "lot_step_aligned", "magic_in_range"):
+            assert payload[flag] in ("PASS", "WARN", "FAIL")
+
+
+def test_verify_audit_runs_kit_conformance_battery() -> None:
+    srv = _load_server()
+    payload = _call(srv, "verify.audit", {})
+    # The kit ships with all probes passing on main.
+    assert payload["ok"] is True
+    assert payload["total"] == payload["passed"]
+    assert payload["total"] >= 60  # ~70 probes — defensive lower bound
+
+
+def test_spec_validate_accepts_prop_firm_block() -> None:
+    srv = _load_server()
+    payload = _call(srv, "spec.validate", {
+        "spec": {
+            "name": "FundedEA", "preset": "trend", "stack": "netting",
+            "symbol": "EURUSD", "timeframe": "H1",
+            "prop_firm": {"daily_dd_pct": 5.0, "max_dd_pct": 10.0,
+                          "news_block_min": 30, "weekend_flat": True},
+        },
+    })
+    assert payload["ok"] is True
+    assert payload["spec"]["prop_firm"]["daily_dd_pct"] == 5.0
+    assert payload["spec"]["prop_firm"]["weekend_flat"] is True
+
+
+def test_spec_validate_accepts_time_exit_block() -> None:
+    srv = _load_server()
+    payload = _call(srv, "spec.validate", {
+        "spec": {
+            "name": "TimedEA", "preset": "trend", "stack": "netting",
+            "symbol": "EURUSD", "timeframe": "H1",
+            "time_exit": {"close_on_friday": True, "max_trade_hours": 24,
+                          "session_start_hour": 8, "session_end_hour": 20},
+        },
+    })
+    assert payload["ok"] is True
+    te = payload["spec"]["time_exit"]
+    assert te["close_on_friday"] is True
+    assert te["max_trade_hours"] == 24
+    assert te["session_end_hour"] == 20
+
+
+def test_spec_validate_accepts_stealth_block() -> None:
+    srv = _load_server()
+    payload = _call(srv, "spec.validate", {
+        "spec": {
+            "name": "StealthEA", "preset": "trend", "stack": "netting",
+            "symbol": "EURUSD", "timeframe": "H1",
+            "stealth": {"randomize_slippage_pips": 2,
+                        "randomize_comment_pool": ["sig-a", "sig-b"],
+                        "split_orders": True},
+        },
+    })
+    assert payload["ok"] is True
+    st = payload["spec"]["stealth"]
+    assert st["randomize_slippage_pips"] == 2
+    assert st["randomize_comment_pool"] == ["sig-a", "sig-b"]
+    assert st["split_orders"] is True
+
+
+def test_spec_validate_rejects_invalid_prop_firm_value() -> None:
+    srv = _load_server()
+    payload = _call(srv, "spec.validate", {
+        "spec": {
+            "name": "X", "preset": "trend", "stack": "netting",
+            "symbol": "EURUSD", "timeframe": "H1",
+            "prop_firm": {"daily_dd_pct": -1.0},
+        },
+    })
+    assert payload["ok"] is False
+    assert any("daily_dd_pct" in e for e in payload["errors"])
+
+
+def test_spec_validate_rejects_unknown_extension_keys() -> None:
+    srv = _load_server()
+    payload = _call(srv, "spec.validate", {
+        "spec": {
+            "name": "X", "preset": "trend", "stack": "netting",
+            "symbol": "EURUSD", "timeframe": "H1",
+            "stealth": {"bogus_field": True},
+        },
+    })
+    assert payload["ok"] is False
+    assert any("stealth" in e and "bogus_field" in e for e in payload["errors"])
+
+
+def test_spec_validate_backcompat_no_extension_blocks() -> None:
+    """Specs that don't use prop_firm/time_exit/stealth must still validate."""
+    srv = _load_server()
+    payload = _call(srv, "spec.validate", {
+        "spec": {
+            "name": "Plain", "preset": "trend", "stack": "netting",
+            "symbol": "EURUSD", "timeframe": "H1",
+        },
+    })
+    assert payload["ok"] is True
+    # The extension blocks should not appear in the normalised output
+    # when the input doesn't supply them.
+    assert "prop_firm" not in payload["spec"]
+    assert "time_exit" not in payload["spec"]
+    assert "stealth" not in payload["spec"]

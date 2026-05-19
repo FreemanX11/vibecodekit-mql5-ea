@@ -486,21 +486,34 @@ ALGO_FORGE_API_KEY=xxx python mcp/algo-forge-bridge/server.py
 
 ### 5.4. vibecodekit-bridge
 
-4 tool (PR-1): `spec.from_prompt`, `spec.validate`, `build.auto`,
-`verify.permission`. Cho phép AI coding agent (Codex CLI / Claude Code
-/ Cursor / Devin) gọi thẳng vào pipeline `prompt → spec → build →
-permission gate` qua JSON-RPC.
+11 tool qua 2 PR. Cho phép AI coding agent (Codex CLI / Claude Code /
+Cursor / Devin / Claude Desktop) gọi thẳng vào pipeline `prompt → spec
+→ build → verify → permission gate` qua JSON-RPC. Wire format ổn định
+giữa các PR — PR sau chỉ mở rộng `DISPATCH`.
+
+**PR-1 (prompt → spec → build → permission gate):**
+`spec.from_prompt`, `spec.validate`, `build.auto`, `verify.permission`.
+
+**PR-2 (verify suite):** `verify.lint` (8 AP critical),
+`verify.lint_best_practice` (14 AP WARN), `verify.method_hiding`,
+`verify.trader17`, `verify.compile`, `verify.broker_safety`,
+`verify.audit`.
+
+**Schema `ea-spec.yaml` mở rộng (PR-2):** thêm 3 block optional, full
+back-compat — `prop_firm` (DD limits + news block + weekend-flat cho
+FTMO/MFF), `time_exit` (close on Friday, max trade hours, session
+windows), `stealth` (random slippage / comment pool / lot jitter,
+split orders). Spec cũ không có các block này vẫn validate như cũ.
 
 ```bash
 python mcp/vibecodekit-bridge/server.py
 ```
 
-Future PR sẽ mở rộng thêm các tool verify (lint/trader17/method_hiding
-/backtest/walkforward/MC/multibroker/fitness), review persona, và
-dashboard.publish.
+PR tiếp theo sẽ thêm các tool backtest/walkforward/MC/multibroker
+/fitness, review persona, và `dashboard.publish`.
 
 
-### 5.4. Cấu hình MCP client
+### 5.5. Cấu hình MCP client
 
 Xem [docs/ENV-SETUP-vi.md](ENV-SETUP-vi.md) cho cấu hình cụ thể từng
 IDE/CLI (Claude Desktop, Cursor, Codex, Devin).

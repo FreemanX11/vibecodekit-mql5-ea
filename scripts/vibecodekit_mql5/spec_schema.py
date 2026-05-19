@@ -118,6 +118,74 @@ class FilterConfig:
 
 
 @dataclass
+class PropFirmConfig:
+    """Prop-firm compliance constraints (FTMO/MFF/FundedNext-style).
+
+    All fields are optional. When omitted the auto-build pipeline treats
+    the section as absent and skips any prop-firm-specific safeguards.
+    Templates that don't reference these fields ignore the section
+    entirely — the block is purely additive.
+    """
+
+    daily_dd_pct: float | None = None
+    max_dd_pct: float | None = None
+    profit_target_pct: float | None = None
+    news_block_min: int | None = None
+    weekend_flat: bool = False
+    copy_trading_lock: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {k: v for k, v in asdict(self).items() if v is not None and v is not False}
+
+
+@dataclass
+class TimeExitConfig:
+    """Time-based exit constraints layered on top of price-based SL/TP.
+
+    All fields are optional.
+    """
+
+    close_on_friday: bool = False
+    friday_close_hour: int | None = None
+    max_trade_hours: int | None = None
+    session_end_hour: int | None = None
+    session_start_hour: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {k: v for k, v in asdict(self).items() if v is not None and v is not False}
+
+
+@dataclass
+class StealthConfig:
+    """Broker-side anti-pattern obfuscation switches.
+
+    All fields are optional. NB: stealth tactics interact with broker
+    ToS — enabling them is a policy decision, not a code one. The kit
+    only validates shape; ship/no-ship is a human call.
+    """
+
+    randomize_slippage_pips: float | None = None
+    randomize_comment_pool: list[str] = field(default_factory=list)
+    randomize_lot_jitter_pct: float | None = None
+    split_orders: bool = False
+    avoid_round_numbers: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        if self.randomize_slippage_pips is not None:
+            out["randomize_slippage_pips"] = self.randomize_slippage_pips
+        if self.randomize_comment_pool:
+            out["randomize_comment_pool"] = list(self.randomize_comment_pool)
+        if self.randomize_lot_jitter_pct is not None:
+            out["randomize_lot_jitter_pct"] = self.randomize_lot_jitter_pct
+        if self.split_orders:
+            out["split_orders"] = True
+        if self.avoid_round_numbers:
+            out["avoid_round_numbers"] = True
+        return out
+
+
+@dataclass
 class EaSpec:
     """Validated spec ready to feed into the build/lint/compile pipeline."""
 
@@ -132,9 +200,12 @@ class EaSpec:
     signal_logic: str = "AND"
     filters: list[FilterConfig] = field(default_factory=list)
     hooks: dict[str, list[str]] = field(default_factory=dict)
+    prop_firm: PropFirmConfig | None = None
+    time_exit: TimeExitConfig | None = None
+    stealth: StealthConfig | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "name": self.name,
             "preset": self.preset,
             "stack": self.stack,
@@ -147,6 +218,13 @@ class EaSpec:
             "filters": [f.to_dict() for f in self.filters],
             "hooks": dict(self.hooks),
         }
+        if self.prop_firm is not None:
+            out["prop_firm"] = self.prop_firm.to_dict()
+        if self.time_exit is not None:
+            out["time_exit"] = self.time_exit.to_dict()
+        if self.stealth is not None:
+            out["stealth"] = self.stealth.to_dict()
+        return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -304,6 +382,123 @@ def _validate_hooks(errors: list[str], raw: Any) -> dict[str, list[str]]:
     return out
 
 
+def _check_unknown_keys(
+    errors: list[str], block: str, raw: dict[str, Any], valid: set[str],
+) -> None:
+    unknown = set(raw.keys()) - valid
+    if unknown:
+        errors.append(
+            f"spec.{block} has unknown keys: {sorted(unknown)} "
+            f"(valid: {sorted(valid)})"
+        )
+
+
+def _validate_prop_firm(errors: list[str], raw: Any) -> PropFirmConfig | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        errors.append(f"spec.prop_firm must be a mapping, got {type(raw).__name__}")
+        return None
+    cfg = PropFirmConfig()
+    valid_keys = {f.name for f in cfg.__dataclass_fields__.values()}
+    _check_unknown_keys(errors, "prop_firm", raw, valid_keys)
+    bounds: dict[str, tuple[float, float, bool]] = {
+        "daily_dd_pct":      (0.0, 100.0, False),
+        "max_dd_pct":        (0.0, 100.0, False),
+        "profit_target_pct": (0.0, 100.0, False),
+        "news_block_min":    (0.0, 1440.0, True),
+    }
+    for k, (lo, hi, is_int) in bounds.items():
+        if k not in raw:
+            continue
+        before = len(errors)
+        _check_num_range(errors, "spec.prop_firm", k, raw[k],
+                         min_excl=lo, max_incl=hi, is_int=is_int)
+        if len(errors) == before:
+            setattr(cfg, k, raw[k])
+    for k in ("weekend_flat", "copy_trading_lock"):
+        if k in raw:
+            v = raw[k]
+            if not isinstance(v, bool):
+                errors.append(f"spec.prop_firm.{k} must be a bool, got {type(v).__name__}")
+                continue
+            setattr(cfg, k, v)
+    return cfg
+
+
+def _validate_time_exit(errors: list[str], raw: Any) -> TimeExitConfig | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        errors.append(f"spec.time_exit must be a mapping, got {type(raw).__name__}")
+        return None
+    cfg = TimeExitConfig()
+    valid_keys = {f.name for f in cfg.__dataclass_fields__.values()}
+    _check_unknown_keys(errors, "time_exit", raw, valid_keys)
+    int_bounds: dict[str, tuple[float, float]] = {
+        # 0-23 for hours (allow 0); use min_excl=-1 so 0 passes.
+        "friday_close_hour":  (-1.0, 23.0),
+        "session_end_hour":   (-1.0, 23.0),
+        "session_start_hour": (-1.0, 23.0),
+        # max_trade_hours must be positive (a 0-hour cap is meaningless).
+        "max_trade_hours":    (0.0, 720.0),
+    }
+    for k, (lo, hi) in int_bounds.items():
+        if k not in raw:
+            continue
+        before = len(errors)
+        _check_num_range(errors, "spec.time_exit", k, raw[k],
+                         min_excl=lo, max_incl=hi, is_int=True)
+        if len(errors) == before:
+            setattr(cfg, k, raw[k])
+    if "close_on_friday" in raw:
+        v = raw["close_on_friday"]
+        if not isinstance(v, bool):
+            errors.append(
+                f"spec.time_exit.close_on_friday must be a bool, got {type(v).__name__}"
+            )
+        else:
+            cfg.close_on_friday = v
+    return cfg
+
+
+def _validate_stealth(errors: list[str], raw: Any) -> StealthConfig | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        errors.append(f"spec.stealth must be a mapping, got {type(raw).__name__}")
+        return None
+    cfg = StealthConfig()
+    valid_keys = {f.name for f in cfg.__dataclass_fields__.values()}
+    _check_unknown_keys(errors, "stealth", raw, valid_keys)
+    float_bounds: dict[str, tuple[float, float]] = {
+        "randomize_slippage_pips":  (0.0, 100.0),
+        "randomize_lot_jitter_pct": (0.0, 50.0),
+    }
+    for k, (lo, hi) in float_bounds.items():
+        if k not in raw:
+            continue
+        before = len(errors)
+        _check_num_range(errors, "spec.stealth", k, raw[k],
+                         min_excl=lo, max_incl=hi, is_int=False)
+        if len(errors) == before:
+            setattr(cfg, k, raw[k])
+    if "randomize_comment_pool" in raw:
+        pool = raw["randomize_comment_pool"]
+        if not isinstance(pool, list) or not all(isinstance(p, str) for p in pool):
+            errors.append("spec.stealth.randomize_comment_pool must be a list of strings")
+        else:
+            cfg.randomize_comment_pool = list(pool)
+    for k in ("split_orders", "avoid_round_numbers"):
+        if k in raw:
+            v = raw[k]
+            if not isinstance(v, bool):
+                errors.append(f"spec.stealth.{k} must be a bool, got {type(v).__name__}")
+                continue
+            setattr(cfg, k, v)
+    return cfg
+
+
 def validate(
     spec: dict[str, Any],
     *,
@@ -354,9 +549,13 @@ def validate(
     signals, signal_logic = _validate_signals(errors, spec.get("signals"))
     filters = _validate_filters(errors, spec.get("filters"))
     hooks = _validate_hooks(errors, spec.get("hooks"))
+    prop_firm = _validate_prop_firm(errors, spec.get("prop_firm"))
+    time_exit = _validate_time_exit(errors, spec.get("time_exit"))
+    stealth = _validate_stealth(errors, spec.get("stealth"))
 
     unknown_top = set(spec.keys()) - {
         *REQUIRED_TOP_FIELDS, "mode", "risk", "signals", "filters", "hooks",
+        "prop_firm", "time_exit", "stealth",
     }
     if unknown_top:
         errors.append(f"spec has unknown top-level keys: {sorted(unknown_top)}")
@@ -376,6 +575,9 @@ def validate(
         signal_logic=signal_logic,
         filters=filters,
         hooks=hooks,
+        prop_firm=prop_firm,
+        time_exit=time_exit,
+        stealth=stealth,
     )
 
 
