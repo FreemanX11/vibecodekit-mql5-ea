@@ -9,9 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
-from vibecodekit_mql5.build import PHASE_A_PRESETS, BuildRequest, build
+from vibecodekit_mql5.build import BuildRequest, build
 
 REPO = Path(__file__).resolve().parents[3]
 

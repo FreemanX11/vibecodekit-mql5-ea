@@ -137,10 +137,14 @@ def fix_ap20(src: str) -> tuple[str, list[str]]:
     if not _has_pip_var(src):
         return src, []
     n = 0
-    src, k = re.subn(r"\*\s*0\.0001\b",        "* pip.Pip()", src);   n += k
-    src, k = re.subn(r"\*\s*0\.001\b",         "* pip.Pip()", src);   n += k
-    src, k = re.subn(r"\*\s*_Point\b",         "* pip.Point()", src); n += k
-    src, k = re.subn(r"\*\s*Point\s*\(\s*\)",  "* pip.Point()", src); n += k
+    src, k = re.subn(r"\*\s*0\.0001\b",       "* pip.Pip()", src)
+    n += k
+    src, k = re.subn(r"\*\s*0\.001\b",        "* pip.Pip()", src)
+    n += k
+    src, k = re.subn(r"\*\s*_Point\b",        "* pip.Point()", src)
+    n += k
+    src, k = re.subn(r"\*\s*Point\s*\(\s*\)", "* pip.Point()", src)
+    n += k
     if n == 0:
         return src, []
     return src, [f"AP-20: replaced {n} hardcoded pip operation(s) with CPipNormalizer"]
