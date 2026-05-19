@@ -9,7 +9,7 @@ audience: dev_team
 
 Hướng dẫn này áp dụng v1.0.0+. Mỗi section hoàn chỉnh và độc lập:
 chọn section IDE/CLI bạn dùng, paste config, sẵn sàng chạy 50 lệnh +
-3 MCP server.
+4 MCP server.
 
 > 🇬🇧 English version pending — sections below are bilingual where it
 > matters; CLI snippets are language-neutral.
@@ -327,7 +327,7 @@ Tạo file `.cursor/rules/mql5-kit.mdc`:
 
 ```markdown
 ---
-description: vibecodekit-mql5-ea — MQL5 EA development with 22 AP detectors and 64-cell quality matrix.
+description: vibecodekit-mql5-ea — MQL5 EA development with 23 AP detectors and 64-cell quality matrix.
 globs: ["**/*.mq5", "**/*.mqh", "scripts/vibecodekit_mql5/**"]
 alwaysApply: false
 ---
@@ -464,18 +464,19 @@ Cài extension:
 - **Python** (Microsoft)
 - **Even Better TOML** (cho tester.ini syntax)
 - **YAML** (cho rri-personas)
-- **markdownlint** (cho 28 reference docs)
+- **markdownlint** (cho 29 reference docs)
 
 ---
 
 ## 7. MCP server config bảng tổng hợp
 
-Tất cả 3 server đều dùng JSON-RPC 2.0 over stdio. Path:
+Tất cả 4 server đều dùng JSON-RPC 2.0 over stdio. Path:
 
 ```
 /path/to/vibecodekit-mql5-ea/mcp/metaeditor-bridge/server.py
 /path/to/vibecodekit-mql5-ea/mcp/mt5-bridge/server.py
 /path/to/vibecodekit-mql5-ea/mcp/algo-forge-bridge/server.py
+/path/to/vibecodekit-mql5-ea/mcp/vibecodekit-bridge/server.py
 ```
 
 Thay `/path/to/` bằng path thật của bạn. Trên Windows dùng absolute
@@ -488,6 +489,7 @@ path với forward slash hoặc escaped backslash.
 | metaeditor-bridge | 3 | `metaeditor.compile`, `metaeditor.parse_log`, `metaeditor.includes_resolve` | `METAEDITOR_BIN` (optional) |
 | mt5-bridge | 10 (chỉ-đọc) | `mt5.symbols.list`, `mt5.symbol.info`, `mt5.rates.copy`, `mt5.tick.last`, `mt5.account.info`, `mt5.terminal.info`, `mt5.positions.list`, `mt5.positions.history`, `mt5.history.deals`, `mt5.market.book` | MT5 desktop chạy + login (Windows/Wine) |
 | algo-forge-bridge | 6 | `forge.init`, `forge.clone`, `forge.commit`, `forge.pr.create`, `forge.pr.list`, `forge.repo.list` | `ALGO_FORGE_API_KEY` |
+| vibecodekit-bridge | 25 | `spec.from_prompt`, `spec.validate`, `build.auto`, `verify.{permission,lint,lint_best_practice,method_hiding,trader17,compile,broker_safety,audit,backtest,walkforward,montecarlo,multibroker,fitness,mfe_mae,overfit}`, `review.{eng,cso,ceo,investigate}`, `rri.persona`, `dashboard.publish`, `forge.pr.create` | (hermetic; `MQL5_FORGE_TOKEN` only for real-mode `forge.pr.create`, `MQL5_DASHBOARD_PUBLISH_CMD` for `dashboard.publish` upload) |
 
 ### Tại sao mt5-bridge READ-ONLY?
 
