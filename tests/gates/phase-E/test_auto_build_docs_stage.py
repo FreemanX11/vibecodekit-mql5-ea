@@ -293,3 +293,109 @@ def test_report_to_dict_includes_docs_field() -> None:
     payload = report.to_dict()
     assert "docs" in payload
     assert payload["docs"] is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# docs_status_lines — PR-17.1 regression tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_docs_status_lines_summarizes_real_compile_errors() -> None:
+    """Pin the regression fixed in PR-17.1: compile-stage failure detail
+    is ``{'errors': [...], 'warnings': [...], 'ex5_path': ''}`` — the
+    earlier code looked up the wrong key (``'error'``, singular) and
+    always wrote ``"fail (failed)"`` no matter what MetaEditor said."""
+    from vibecodekit_mql5 import auto_build_docs_stage as docs_stage
+
+    stages = [
+        auto_build.StageResult(
+            name="compile",
+            ok=False,
+            detail={
+                "errors": ["foo.mq5(12,3): undeclared identifier 'Bar'"],
+                "warnings": [],
+                "ex5_path": "",
+            },
+        ),
+    ]
+    compile_line, _ = docs_stage.docs_status_lines(stages)
+    assert "undeclared identifier" in compile_line
+    assert "failed" not in compile_line  # generic fallback must NOT appear
+
+
+def test_docs_status_lines_truncates_long_compile_error_lists() -> None:
+    """3+ compile errors should collapse to ``"first; second; +N more"``
+    so the docs frontmatter stays one line."""
+    from vibecodekit_mql5 import auto_build_docs_stage as docs_stage
+
+    stages = [
+        auto_build.StageResult(
+            name="compile",
+            ok=False,
+            detail={"errors": ["err A", "err B", "err C", "err D"]},
+        ),
+    ]
+    compile_line, _ = docs_stage.docs_status_lines(stages)
+    assert "err A" in compile_line
+    assert "err B" in compile_line
+    assert "+2 more" in compile_line
+
+
+def test_docs_status_lines_summarizes_real_gate_failure() -> None:
+    """Pin the regression fixed in PR-17.1: gate-stage detail is
+    ``{'mode': ..., 'layers': [...]}`` — no ``'error'`` key. The fix
+    walks ``layers`` and returns the offender's id + error/reason."""
+    from vibecodekit_mql5 import auto_build_docs_stage as docs_stage
+
+    stages = [
+        auto_build.StageResult(
+            name="gate",
+            ok=False,
+            detail={
+                "mode": "enterprise",
+                "layers": [
+                    {"layer": 1, "ok": True},
+                    {"layer": 2, "ok": True},
+                    {"layer": 4, "ok": False,
+                     "error": "Trader-17: 6/17 checks passed"},
+                ],
+            },
+        ),
+    ]
+    _, gate_line = docs_stage.docs_status_lines(stages)
+    assert "Layer-4" in gate_line
+    assert "Trader-17" in gate_line
+
+
+def test_docs_status_lines_handles_gate_with_reason_field() -> None:
+    """Some layers (e.g. layer-6 quality-matrix with no --matrix arg)
+    skip via a ``reason`` field instead of ``error`` — handle both."""
+    from vibecodekit_mql5 import auto_build_docs_stage as docs_stage
+
+    stages = [
+        auto_build.StageResult(
+            name="gate",
+            ok=False,
+            detail={
+                "mode": "enterprise",
+                "layers": [
+                    {"layer": 6, "ok": False,
+                     "reason": "no --matrix provided"},
+                ],
+            },
+        ),
+    ]
+    _, gate_line = docs_stage.docs_status_lines(stages)
+    assert "Layer-6" in gate_line
+    assert "no --matrix provided" in gate_line
+
+
+def test_docs_status_lines_compile_skipped_and_gate_skipped() -> None:
+    """The healthy 'no errors' path remains green."""
+    from vibecodekit_mql5 import auto_build_docs_stage as docs_stage
+
+    stages = [
+        auto_build.StageResult(name="compile", ok=True, skipped=True),
+        auto_build.StageResult(name="gate", ok=True, skipped=True),
+    ]
+    assert docs_stage.docs_status_lines(stages) == ("skipped", "skipped")
