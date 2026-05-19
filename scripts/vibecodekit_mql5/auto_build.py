@@ -2,10 +2,12 @@
 
 Reads a YAML or JSON spec and runs, in order:
 
-    1. build   — render scaffold + Include/.mqh → project dir
-    2. lint    — 23 anti-pattern detectors on the rendered .mq5
-    3. compile — MetaEditor (Wine on Linux) → .ex5  (skippable)
-    4. gate    — permission.orchestrator in spec-declared mode (skippable)
+    1. build     — render scaffold + Include/.mqh → project dir
+    2. lint      — 23 anti-pattern detectors on the rendered .mq5
+    3. compile   — MetaEditor (Wine on Linux) → .ex5  (skippable)
+    4. gate      — permission.orchestrator in spec-declared mode (skippable)
+    5. dashboard — render quality-matrix HTML + optional publish (skippable)
+    6. docs      — write <EAName>.docs.html + <EAName>.docs.md (skippable)
 
 Each stage is fail-fast: the first stage to fail aborts the pipeline.
 A `report.json` summarising every stage is always written to
@@ -39,6 +41,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import auto_build_docs_stage as docs_stage_mod
 from . import build as build_mod
 from . import compile as compile_mod
 from . import dashboard as dashboard_mod
@@ -69,6 +72,7 @@ class PipelineReport:
     ok: bool = True
     stages: list[StageResult] = field(default_factory=list)
     dashboard: dict[str, Any] | None = None
+    docs: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -77,6 +81,7 @@ class PipelineReport:
             "ok": self.ok,
             "stages": [s.to_dict() for s in self.stages],
             "dashboard": self.dashboard,
+            "docs": self.docs,
         }
 
 
@@ -206,19 +211,30 @@ def run_pipeline(
     skip_compile: bool = False,
     skip_gate: bool = False,
     skip_dashboard: bool = False,
+    skip_docs: bool = False,
     force: bool = False,
     ea_spec: spec_schema.EaSpec | None = None,
     publish_cmd: str | None = None,
+    docs_lang: str = "vi",
+    docs_formats: tuple[str, ...] = ("html", "md"),
 ) -> PipelineReport:
     report = PipelineReport(spec=spec, out_dir=str(out_dir))
+
+    def _finalize(mq5: Path | None) -> PipelineReport:
+        # Informational stages always run last and never flip pipeline ok.
+        _maybe_attach_dashboard(report, out_dir, skip=skip_dashboard,
+                                publish_cmd=publish_cmd)
+        docs_stage_mod.attach_docs(
+            report, out_dir, skip=skip_docs, ea_spec=ea_spec,
+            lang=docs_lang, formats=docs_formats, spec=spec, mq5_path=mq5,
+        )
+        return report
 
     build_stage = _stage_build(spec, out_dir, force, ea_spec=ea_spec)
     report.stages.append(build_stage)
     if not build_stage.ok:
         report.ok = False
-        _maybe_attach_dashboard(report, out_dir, skip=skip_dashboard,
-                                publish_cmd=publish_cmd)
-        return report
+        return _finalize(None)
 
     mq5_path = out_dir / f"{spec['name']}.mq5"
     if not mq5_path.is_file():
@@ -228,18 +244,14 @@ def run_pipeline(
         if not candidates:
             report.stages.append(StageResult("lint", ok=False, detail={"error": "no .mq5 produced"}))
             report.ok = False
-            _maybe_attach_dashboard(report, out_dir, skip=skip_dashboard,
-                                    publish_cmd=publish_cmd)
-            return report
+            return _finalize(None)
         mq5_path = candidates[0]
 
     lint_stage = _stage_lint(mq5_path)
     report.stages.append(lint_stage)
     if not lint_stage.ok:
         report.ok = False
-        _maybe_attach_dashboard(report, out_dir, skip=skip_dashboard,
-                                publish_cmd=publish_cmd)
-        return report
+        return _finalize(mq5_path)
 
     if skip_compile:
         report.stages.append(StageResult("compile", ok=True, skipped=True))
@@ -248,9 +260,7 @@ def run_pipeline(
         report.stages.append(compile_stage)
         if not compile_stage.ok:
             report.ok = False
-            _maybe_attach_dashboard(report, out_dir, skip=skip_dashboard,
-                                    publish_cmd=publish_cmd)
-            return report
+            return _finalize(mq5_path)
 
     if skip_gate:
         report.stages.append(StageResult("gate", ok=True, skipped=True))
@@ -260,9 +270,7 @@ def run_pipeline(
         if not gate_stage.ok:
             report.ok = False
 
-    _maybe_attach_dashboard(report, out_dir, skip=skip_dashboard,
-                            publish_cmd=publish_cmd)
-    return report
+    return _finalize(mq5_path)
 
 
 def _maybe_attach_dashboard(
@@ -319,6 +327,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip the quality-matrix dashboard step")
     ap.add_argument("--publish-cmd", default=None,
                     help="override $MQL5_DASHBOARD_PUBLISH_CMD for this run")
+    ap.add_argument("--no-docs", action="store_true",
+                    help="skip the post-build EA documentation step")
+    ap.add_argument("--docs-lang", choices=("vi", "en"), default="vi",
+                    help="language for generated docs (default: vi)")
+    ap.add_argument("--docs-formats", default="html,md",
+                    help="comma-separated docs formats (html, md). Default: html,md")
     ap.add_argument("--force", action="store_true",
                     help="overwrite existing output directory")
     args = ap.parse_args(argv)
@@ -331,15 +345,30 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     out_dir = args.out_dir or Path.cwd() / spec["name"]
+    docs_formats_raw = {f.strip() for f in args.docs_formats.split(",") if f.strip()}
+    invalid_formats = docs_formats_raw - {"html", "md"}
+    if invalid_formats:
+        print(
+            f"mql5-auto-build: unknown --docs-formats values: "
+            f"{sorted(invalid_formats)} (supported: html, md)",
+            file=sys.stderr,
+        )
+        return 2
+    docs_formats = tuple(
+        f for f in ("html", "md") if f in docs_formats_raw
+    )
     report = run_pipeline(
         spec,
         out_dir,
         skip_compile=args.no_compile,
         skip_gate=args.no_gate,
         skip_dashboard=args.no_dashboard,
+        skip_docs=args.no_docs,
         force=args.force,
         ea_spec=ea_spec,
         publish_cmd=args.publish_cmd,
+        docs_lang=args.docs_lang,
+        docs_formats=docs_formats,
     )
     report_path = _write_report(report, out_dir)
     print(json.dumps(report.to_dict(), indent=2))
