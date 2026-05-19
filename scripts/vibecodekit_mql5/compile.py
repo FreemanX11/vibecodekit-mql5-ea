@@ -96,8 +96,18 @@ def parse_log(text: str) -> CompileResult:
         # are not falsely classified as successful builds.
         if re.search(r"\b0 errors?\b", result_line.lower()):
             success = True
-    elif not errors:
-        success = True
+    else:
+        # No ``Result:`` line means MetaEditor never finished (empty log,
+        # missing binary, sandbox crash, wrong $METAEDITOR_PATH, etc.).
+        # Previously the parser fell through to ``success = True`` when no
+        # error lines were present, producing a false positive where the
+        # build stage reported OK but no ``.ex5`` was actually produced.
+        # Surface the missing summary as a hard failure with an explicit
+        # error so upstream stages can react.
+        errors.append(
+            "compile: MetaEditor log has no 'Result:' summary line "
+            "(binary may not have run — check METAEDITOR_PATH and Wine)"
+        )
     return CompileResult(success=success, errors=errors, warnings=warnings, raw_log=text)
 
 
