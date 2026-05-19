@@ -20,6 +20,7 @@ Out of scope for this PR (handled in PR-17 / PR-18):
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import sys
 from dataclasses import dataclass
@@ -187,13 +188,20 @@ def _input_to_param_row(decl: InputDecl) -> ParamRow:
 
 
 def _render_signals_summary(signal_kinds: str, lang: str) -> str:
-    """Tiny closing fragment showing the wired signal kinds verbatim."""
+    """Tiny closing fragment showing the wired signal kinds verbatim.
+
+    ``signal_kinds`` is user-controlled (via ``spec.signals[*].kind``);
+    although the CLI path validates kinds against an allowlist, the
+    public ``build_doc_content`` API accepts any ``EaSpec`` directly,
+    so escape defensively here — same convention as every other
+    renderer in ``ea_docs_render``.
+    """
     label = {"vi": "Tín hiệu đã wire", "en": "Wired signals"}[lang]
     return (
         '<div class="block yellow">'
-        f'<h3 class="h-card">{label}</h3>'
+        f'<h3 class="h-card">{html.escape(label)}</h3>'
         f'<p class="t-caption" style="font-family:var(--font-mono)">'
-        f'{signal_kinds}'
+        f'{html.escape(signal_kinds)}'
         '</p>'
         '</div>'
     )
@@ -278,11 +286,17 @@ def render_markdown(content: DocContent) -> str:
 # ────────────────────────────────────────────────────────────────────────────
 
 
+# Distribution name from ``pyproject.toml``. Do not confuse with the
+# import-path module name ``vibecodekit_mql5`` (with underscore) —
+# ``importlib.metadata.version`` keys off the *distribution* name.
+_DIST_NAME = "vibecodekit-mql5-ea"
+
+
 def _kit_version() -> str:
     try:
         from importlib.metadata import PackageNotFoundError, version
 
-        return version("vibecodekit-mql5")
+        return version(_DIST_NAME)
     except PackageNotFoundError:
         return "unknown"
     except ImportError:
