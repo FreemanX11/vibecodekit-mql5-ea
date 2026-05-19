@@ -27,7 +27,7 @@
 | **Commands** | 50 (`/mql5-{scan,survey,doctor,audit,rri,vision,blueprint,tip,build,auto-build,auto-fix,spec-from-prompt,dashboard,wizard,pip-normalize,async-build,onnx-export,onnx-embed,llm-context,forge-init,compile,lint,method-hiding-check,backtest,tester-run,walkforward,monte-carlo,overfit-check,multibroker,fitness,mfe-mae,rri-bt,rri-rr,rri-chart,review,eng-review,ceo-review,cso,investigate,deploy-vps,cloud-optimize,canary,forge-pr,ship,refine,broker-safety,trader-check,install,second-opinion,permission}`) |
 | **MCP servers** | 3 (`metaeditor-bridge`, `mt5-bridge` READ-ONLY[^1], `algo-forge-bridge`) |
 | **Reference docs** | 29 (`docs/references/50-survey.md` → `80-input-syntax.md`) |
-| **Scaffolds** | 22 archetypes × broker variants (`scaffolds/trend/netting`, `scalping/hedging`, `hft-async/netting`, `service-llm-bridge/{cloud-api,self-hosted-ollama,embedded-onnx-llm}`, `ml-onnx/python-bridge`, …) |
+| **Scaffolds** | 23 archetypes × broker variants (`scaffolds/trend/netting`, `scalping/hedging`, `hft-async/netting`, `service-llm-bridge/{cloud-api,self-hosted-ollama,embedded-onnx-llm}`, `ml-onnx/python-bridge`, `wizard-composable/netting`, `service/standalone`, …) |
 | **Anti-pattern detectors** | 23 (8 critical `ERROR` + 14 best-practice `WARN` + 1 build-aware method-hiding) |
 | **Quality matrix** | 8 dimensions × 8 axes = 64-cell HTML report (PASS / WARN / FAIL / N/A) |
 | **Permission layers** | 7 (source-lint → compile → AP-lint → checklist → methodology → quality-matrix → broker-safety) |
@@ -124,7 +124,7 @@ hot-spots:
 | **Lệnh CLI** | 50 lệnh — đầy đủ chu trình `scan → plan → build → verify → review → deploy → ship`, bao gồm `mql5-auto-build` chạy 1 lệnh, `mql5-auto-fix` đóng 8 AP nghiêm trọng, `mql5-spec-from-prompt` parse free-text → `ea-spec.yaml`, `mql5-dashboard` xuất ma trận chất lượng kèm URL public |
 | **MCP server** | 3 (`metaeditor-bridge`, `mt5-bridge` chỉ-đọc[^2], `algo-forge-bridge`) — chuẩn MCP JSON-RPC 2.0 over stdio |
 | **Tài liệu tham khảo** | 29 cheatsheet (`docs/references/50-survey.md` → `80-input-syntax.md`) |
-| **Scaffold** | 22 archetype × biến thể tài khoản (`trend/netting`, `scalping/hedging`, `hft-async/netting`, 3 biến thể LLM bridge, ml-onnx, …) |
+| **Scaffold** | 23 archetype × biến thể tài khoản (`trend/netting`, `scalping/hedging`, `hft-async/netting`, 3 biến thể LLM bridge, ml-onnx, `wizard-composable/netting`, `service/standalone`, …) |
 | **Bộ dò chống mẫu xấu** | 23 detector (8 lỗi nghiêm trọng `ERROR` + 14 best-practice `WARN` + 1 method-hiding theo build) |
 | **Ma trận chất lượng** | 8 chiều × 8 trục = 64 ô HTML (PASS / WARN / FAIL / N/A) |
 | **Lớp permission** | 7 lớp (source-lint → compile → AP-lint → checklist → methodology → quality-matrix → broker-safety) |
@@ -185,7 +185,7 @@ Hướng dẫn chi tiết:
 | B | `v0.2.0` | Test & validation | Driver Strategy Tester, walk-forward, Monte-Carlo, multi-broker, Trader-17 |
 | C | `v0.3.0` | Phương pháp luận | 6 RRI persona × 25 câu × 3 mode, workflow 8 bước, ma trận 64 ô, orchestrator 7 lớp |
 | D | `v0.5.0` | Công nghệ 2024-2025 | ONNX runtime 1.14, HFT async, Algo Forge, LLM bridge (3 pattern), Cloud Network optimize, method-hiding linter |
-| **E** | **`v1.0.1`** | **Polish & ship** | **28 tài liệu tham khảo, 3 MCP server, `/mql5-canary`, worked example 4 tiếng, đầy đủ entry-point `[project.scripts]`** |
+| **E** | **`v1.0.1`** | **Polish & ship** | **29 tài liệu tham khảo, 3 MCP server, `/mql5-canary` + `/mql5-tester-run`, worked example 4 tiếng, đầy đủ entry-point `[project.scripts]`** |
 | **E+** | _(post-v1.0.1)_ | Pipeline auto-build | `mql5-auto-build` orchestrator 1 lệnh, `mql5-auto-fix` transform AP-1/3/5/15/17/18/20/21, `mql5-spec-from-prompt` free-text → `ea-spec.yaml`, `mql5-dashboard` publisher ma trận chất lượng có hook URL public, `ea-spec.yaml` schema-driven (risk / signals / filters / hooks), `requirements.lock` + `Dockerfile.devin`, mở rộng setup Devin Wine kèm `terminal64.exe` |
 
 ### Anti-pattern kit từ chối ship
