@@ -1,7 +1,7 @@
 # vibecodekit-mql5-ea
 
 [![version](https://img.shields.io/badge/version-v1.0.1-blue)](https://github.com/BuildMqlCodekit-01/vibecodekit-mql5-ea/releases/tag/v1.0.1)
-[![tests](https://img.shields.io/badge/tests-567%20passing-success)]()
+[![tests](https://img.shields.io/badge/tests-604%20passing-success)]()
 [![lint](https://img.shields.io/badge/ruff-clean-success)]()
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
@@ -14,7 +14,7 @@
 > detectors, and one fully worked 4-hour wizard-composable portfolio EA
 > — all delivered as a flat, router-free, fail-fast toolkit.
 
-📘 **Docs:** [Quickstart](docs/QUICKSTART.md) · [Full usage guide (EN)](docs/USAGE-en.md) · [Hướng dẫn đầy đủ (VN)](docs/USAGE-vi.md) · [Per-IDE setup](docs/ENV-SETUP-vi.md) · [Command catalog](docs/COMMANDS.md) · [Chat-driven build](docs/devin-chat-driven-build.md) · [Plan v5](docs/PLAN-v5.md)
+📘 **Docs:** [Quickstart](docs/QUICKSTART.md) · [Step-by-step user guide (EN)](docs/USER-GUIDE-en.md) · [Hướng dẫn step-by-step (VN)](docs/USER-GUIDE-vi.md) · [Full usage reference (EN)](docs/USAGE-en.md) · [Reference đầy đủ (VN)](docs/USAGE-vi.md) · [Per-IDE setup](docs/ENV-SETUP-vi.md) · [Command catalog](docs/COMMANDS.md) · [Chat-driven build](docs/devin-chat-driven-build.md) · [Plan v5](docs/PLAN-v5.md)
 
 ---
 
@@ -36,7 +36,7 @@
 | **Worked example** | `examples/ea-wizard-macd-sar-eurusd-h1-portfolio/` — 4-hour enterprise turnaround |
 | **Auto-build pipeline** | `mql5-spec-from-prompt` → `ea-spec.yaml` → `mql5-auto-build` (scan → build → lint → compile → permission-gate → dashboard) — single command, idempotent JSON report, optional publish-to-public-URL |
 | **Reproducible env** | `requirements.lock` (pip-compile pinned) + `Dockerfile.devin` (3-stage: base / wine / ci) |
-| **Test gate** | 567 tests passing across Phase 0/A/B/C/D/E |
+| **Test gate** | 604 tests passing across Phase 0/A/B/C/D/E |
 
 [^1]: `mt5-bridge` requires the `MetaTrader5` Python package, which only
     installs on Windows or Wine MT5 desktop. On a Linux Devin VM without
@@ -76,7 +76,7 @@ the end-to-end chat flow and the `MQL5_DASHBOARD_PUBLISH_CMD` publish
 hook (Vercel / S3 / scp+nginx).
 
 Detailed walk-throughs:
-- New users — [docs/USAGE-en.md](docs/USAGE-en.md)
+- New users — start with the [step-by-step user guide](docs/USER-GUIDE-en.md), then deep-dive into [docs/USAGE-en.md](docs/USAGE-en.md)
 - Dev teams + worked example — [examples/ea-wizard-macd-sar-eurusd-h1-portfolio/README.md](examples/ea-wizard-macd-sar-eurusd-h1-portfolio/README.md)
 - IDE / CLI integration — [docs/ENV-SETUP-vi.md](docs/ENV-SETUP-vi.md)
 
@@ -133,7 +133,7 @@ hot-spots:
 | **Ví dụ hoàn chỉnh** | `examples/ea-wizard-macd-sar-eurusd-h1-portfolio/` — turnaround 4 tiếng ở chế độ enterprise |
 | **Pipeline auto-build** | `mql5-spec-from-prompt` → `ea-spec.yaml` → `mql5-auto-build` (scan → build → lint → compile → permission-gate → dashboard) — 1 lệnh, JSON report idempotent, hook publish public URL tuỳ chọn |
 | **Môi trường reproducible** | `requirements.lock` (pip-compile pin chặt) + `Dockerfile.devin` (3 stage: base / wine / ci) |
-| **Test gate** | 567 test pass qua Phase 0/A/B/C/D/E |
+| **Test gate** | 604 test pass qua Phase 0/A/B/C/D/E |
 
 [^2]: `mt5-bridge` cần package `MetaTrader5` Python — chỉ cài được trên
     Windows hoặc Wine MT5 desktop. Trên Linux Devin VM, import fail và
@@ -172,7 +172,7 @@ cho flow chat đầy đủ và hook `MQL5_DASHBOARD_PUBLISH_CMD` để publish
 bảng chất lượng lên Vercel / S3 / scp+nginx.
 
 Hướng dẫn chi tiết:
-- Người mới — [docs/USAGE-vi.md](docs/USAGE-vi.md)
+- Người mới — đọc [hướng dẫn step-by-step](docs/USER-GUIDE-vi.md) trước, sau đó deep-dive [docs/USAGE-vi.md](docs/USAGE-vi.md)
 - Team dev + worked example — [examples/ea-wizard-macd-sar-eurusd-h1-portfolio/README.md](examples/ea-wizard-macd-sar-eurusd-h1-portfolio/README.md)
 - Tích hợp IDE / CLI — [docs/ENV-SETUP-vi.md](docs/ENV-SETUP-vi.md)
 
