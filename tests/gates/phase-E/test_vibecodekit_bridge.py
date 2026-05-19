@@ -996,7 +996,8 @@ def test_tools_list_includes_pr7_discovery_tools() -> None:
         "discover.llm_context",
         "verify.auto_fix",
     } <= names
-    assert len(names) == 29  # PR-1 (4) + PR-2 (7) + PR-3 (7) + PR-4 (5) + PR-5 (2) + PR-7 (4)
+    # PR-1 (4) + PR-2 (7) + PR-3 (7) + PR-4 (5) + PR-5 (2) + PR-7 (4) + PR-19 (1)
+    assert len(names) == 30
 
 
 def test_discover_doctor_returns_checks_list() -> None:
@@ -1332,3 +1333,168 @@ def test_pr13_unknown_tool_still_returns_minus_32601() -> None:
     })
     assert resp["error"]["code"] == -32601
     assert "made.up.tool" in resp["error"]["message"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-19 — docs.ea_render: MCP exposure of the EA docs renderer
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+_MIN_DOCS_SPEC = {
+    "name": "MinDocsEA",
+    "preset": "trend",
+    "stack": "netting",
+    "symbol": "EURUSD",
+    "timeframe": "H1",
+}
+
+
+_MQ5_FIXTURE = """\
+//+------------------------------------------------------------------+
+//|                                                       MinDocsEA  |
+//+------------------------------------------------------------------+
+#property strict
+input int    InpMagic    = 12345;       // Magic number
+input double InpRiskPct  = 0.5;         // Risk percent per trade
+input int    InpSlPips   = 25;          // Stop loss (pips)
+
+void OnTick() {}
+"""
+
+
+def test_tools_list_includes_docs_ea_render() -> None:
+    """``tools/list`` must surface the PR-19 docs tool as #30."""
+    srv = _load_server()
+    resp = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    names = [t["name"] for t in resp["result"]["tools"]]
+    assert "docs.ea_render" in names
+    # Tool count must have grown by exactly one (PR-19 invariant).
+    assert len(names) == 30, f"expected 30 tools after PR-19, got {len(names)}: {names}"
+
+
+def test_docs_ea_render_schema_advertises_required_inputs() -> None:
+    """Required keys: spec + out_dir. lang defaults to vi; mq5_source/mq5_path optional."""
+    srv = _load_server()
+    resp = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    tool = next(t for t in resp["result"]["tools"] if t["name"] == "docs.ea_render")
+    schema = tool["inputSchema"]
+    assert schema["type"] == "object"
+    assert set(schema["required"]) == {"spec", "out_dir"}
+    assert schema["properties"]["lang"]["default"] == "vi"
+    assert schema["properties"]["lang"]["enum"] == ["vi", "en"]
+    assert "html" in schema["properties"]["formats"]["items"]["enum"]
+    assert "md" in schema["properties"]["formats"]["items"]["enum"]
+    assert "pdf" in schema["properties"]["formats"]["items"]["enum"]
+
+
+def test_docs_ea_render_writes_vietnamese_md_and_html_by_default(tmp_path: Path) -> None:
+    """Default render produces .docs.md + .docs.html in Vietnamese."""
+    srv = _load_server()
+    # Use a richer spec (prop_firm block) so the notes section is populated
+    # and the ``Lưu ý quan trọng`` header gets emitted alongside the other
+    # three that always appear from a fixture EA's overview/strategy/inputs.
+    spec = dict(_MIN_DOCS_SPEC)
+    spec["prop_firm"] = {
+        "daily_dd_pct": 5.0,
+        "max_dd_pct": 10.0,
+        "profit_target_pct": 8.0,
+    }
+    payload = _call(srv, "docs.ea_render", {
+        "spec": spec,
+        "mq5_source": _MQ5_FIXTURE,
+        "out_dir": str(tmp_path),
+    })
+    assert payload["ok"] is True
+    assert payload["lang"] == "vi"
+    md_path = Path(payload["outputs"]["md"])
+    html_path = Path(payload["outputs"]["html"])
+    assert md_path.exists() and md_path.name == "MinDocsEA.docs.md"
+    assert html_path.exists() and html_path.name == "MinDocsEA.docs.html"
+    # Vietnamese default headers must be present in BOTH files.
+    md_text = md_path.read_text(encoding="utf-8")
+    html_text = html_path.read_text(encoding="utf-8")
+    for header in (
+        "Kiến trúc hệ thống",
+        "Chu trình chiến lược",
+        "Tham số EA",
+        "Lưu ý quan trọng",
+    ):
+        assert header in md_text, header
+        assert header in html_text, header
+    # Project-default identifiers MUST survive verbatim — code names are
+    # not translated regardless of lang.
+    assert "InpRiskPct" in md_text
+
+
+def test_docs_ea_render_lang_en_opts_back_to_english(tmp_path: Path) -> None:
+    payload = _call(_load_server(), "docs.ea_render", {
+        "spec": _MIN_DOCS_SPEC,
+        "mq5_source": _MQ5_FIXTURE,
+        "out_dir": str(tmp_path),
+        "lang": "en",
+    })
+    assert payload["ok"] is True
+    assert payload["lang"] == "en"
+    md_text = Path(payload["outputs"]["md"]).read_text(encoding="utf-8")
+    assert "## EA Inputs" in md_text
+    assert "## System Architecture" in md_text
+    # Vietnamese must NOT leak into the English variant.
+    assert "Tham số EA" not in md_text
+
+
+def test_docs_ea_render_accepts_mq5_path(tmp_path: Path) -> None:
+    """When mq5_source is absent, mq5_path on disk must be read."""
+    mq5 = tmp_path / "src.mq5"
+    mq5.write_text(_MQ5_FIXTURE, encoding="utf-8")
+    payload = _call(_load_server(), "docs.ea_render", {
+        "spec": _MIN_DOCS_SPEC,
+        "mq5_path": str(mq5),
+        "out_dir": str(tmp_path / "out"),
+        "formats": ["md"],
+    })
+    assert payload["ok"] is True
+    assert "md" in payload["outputs"]
+    # Only md format was requested.
+    assert "html" not in payload["outputs"]
+
+
+def test_docs_ea_render_rejects_missing_mq5_source_and_path(tmp_path: Path) -> None:
+    """Calling without either mq5_source or mq5_path returns ok=false."""
+    payload = _call(_load_server(), "docs.ea_render", {
+        "spec": _MIN_DOCS_SPEC,
+        "out_dir": str(tmp_path),
+    })
+    assert payload["ok"] is False
+    assert "mq5_source" in payload["error"]
+    assert "mq5_path" in payload["error"]
+
+
+def test_docs_ea_render_rejects_unreadable_mq5_path(tmp_path: Path) -> None:
+    payload = _call(_load_server(), "docs.ea_render", {
+        "spec": _MIN_DOCS_SPEC,
+        "mq5_path": str(tmp_path / "does-not-exist.mq5"),
+        "out_dir": str(tmp_path),
+    })
+    assert payload["ok"] is False
+    assert "failed to read mq5_path" in payload["error"]
+
+
+def test_docs_ea_render_invalid_spec_returns_validate_stage(tmp_path: Path) -> None:
+    payload = _call(_load_server(), "docs.ea_render", {
+        "spec": {"name": "Broken"},  # missing required fields
+        "mq5_source": _MQ5_FIXTURE,
+        "out_dir": str(tmp_path),
+    })
+    assert payload["ok"] is False
+    assert payload["stage"] == "validate"
+    assert any("missing required fields" in e for e in payload["errors"])
+
+
+def test_docs_ea_render_missing_required_fields_returns_minus_32602(tmp_path: Path) -> None:
+    """JSON-RPC strict validation (PR-13) covers docs.ea_render too."""
+    err = _call_for_error(_load_server(), "docs.ea_render", {
+        # spec omitted — required by schema
+        "out_dir": str(tmp_path),
+    })
+    assert err["code"] == -32602
+    assert "spec" in err["message"]

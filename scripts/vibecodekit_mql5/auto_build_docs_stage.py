@@ -25,7 +25,94 @@ if TYPE_CHECKING:
     from .auto_build import PipelineReport, StageResult
 
 
-__all__ = ["attach_docs", "docs_status_lines"]
+__all__ = ["attach_docs", "docs_status_lines", "write_docs_to_disk"]
+
+
+def write_docs_to_disk(
+    ea_spec: spec_schema.EaSpec,
+    mq5_text: str,
+    out_dir: Path,
+    *,
+    lang: str = "vi",
+    formats: tuple[str, ...] = ("html", "md"),
+    build_meta: ea_docs_mod.BuildMeta | None = None,
+) -> dict[str, Any]:
+    """Render + write the EA docs and return the structured outputs dict.
+
+    Pure helper shared by :func:`attach_docs` (pipeline) and the
+    ``docs.ea_render`` MCP tool (PR-19). On any caught ``OSError`` /
+    ``ValueError`` returns ``{"ok": False, "error": ...}`` so the
+    caller decides how to surface the failure — the pipeline stage
+    sticks it on ``report.docs``; the MCP tool ships it back to the
+    agent.
+
+    Returns on success::
+
+        {"ok": True, "lang": lang, "formats": list(formats),
+         "outputs": {"html": "...", "md": "...", "pdf": "..."},
+         "pdf_error": "..."}  # pdf_error present only when 'pdf' was
+                              # requested but headless Chrome was unavailable
+
+    The ``outputs`` dict only contains entries for formats that
+    successfully landed on disk — the dashboard embed and any other
+    consumer use this as the single source of truth for what was
+    actually written.
+    """
+    meta = build_meta or ea_docs_mod.BuildMeta.now(
+        kit_version=ea_docs_mod._kit_version(),
+        built_from=ea_spec.name,
+    )
+    try:
+        content = ea_docs_mod.build_doc_content(ea_spec, mq5_text, meta, lang=lang)
+        from .ea_docs_render import render_html_document
+
+        written: dict[str, str] = {}
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if "html" in formats:
+            html_path = out_dir / f"{ea_spec.name}.docs.html"
+            html_path.write_text(render_html_document(content), encoding="utf-8")
+            written["html"] = str(html_path)
+        if "md" in formats:
+            md_path = out_dir / f"{ea_spec.name}.docs.md"
+            md_path.write_text(ea_docs_mod.render_markdown(content), encoding="utf-8")
+            written["md"] = str(md_path)
+        pdf_error: str | None = None
+        if "pdf" in formats:
+            # PDF requires HTML on disk — if the caller skipped 'html',
+            # render to a temp path under out_dir and clean up after.
+            html_for_pdf = written.get("html")
+            keep_html = html_for_pdf is not None
+            if not html_for_pdf:
+                tmp_html = out_dir / f"{ea_spec.name}.docs.html"
+                tmp_html.write_text(
+                    render_html_document(content), encoding="utf-8",
+                )
+                html_for_pdf = str(tmp_html)
+            pdf_path = out_dir / f"{ea_spec.name}.docs.pdf"
+            ok = ea_docs_pdf_mod.render_pdf(Path(html_for_pdf), pdf_path)
+            if ok:
+                written["pdf"] = str(pdf_path)
+            else:
+                pdf_error = (
+                    "pdf render skipped: no headless-Chrome binary found "
+                    f"(set ${ea_docs_pdf_mod.ENV_CHROME_PATH} to override)"
+                )
+            if not keep_html:
+                try:
+                    Path(html_for_pdf).unlink()
+                except OSError:
+                    pass
+        result: dict[str, Any] = {
+            "ok": True,
+            "lang": lang,
+            "formats": list(formats),
+            "outputs": written,
+        }
+        if pdf_error:
+            result["pdf_error"] = pdf_error
+        return result
+    except (OSError, ValueError) as exc:
+        return {"ok": False, "error": f"docs render failed: {exc}"}
 
 
 def attach_docs(
@@ -69,66 +156,27 @@ def attach_docs(
             gate_status=gate_status,
         )
         mq5_text = mq5_path.read_text(encoding="utf-8", errors="replace")
-        content = ea_docs_mod.build_doc_content(
-            ea_spec, mq5_text, build_meta, lang=lang,
-        )
-        written: dict[str, str] = {}
-        out_dir.mkdir(parents=True, exist_ok=True)
-        if "html" in formats:
-            from .ea_docs_render import render_html_document
-
-            html_path = out_dir / f"{ea_spec.name}.docs.html"
-            html_path.write_text(
-                render_html_document(content), encoding="utf-8",
-            )
-            written["html"] = str(html_path)
-        if "md" in formats:
-            md_path = out_dir / f"{ea_spec.name}.docs.md"
-            md_path.write_text(
-                ea_docs_mod.render_markdown(content), encoding="utf-8",
-            )
-            written["md"] = str(md_path)
-        pdf_error: str | None = None
-        if "pdf" in formats:
-            # PDF requires the HTML on disk — if the caller passed
-            # ``--docs-formats pdf`` without ``html``, render the HTML
-            # to a temp path and clean up after Chrome.
-            html_for_pdf = written.get("html")
-            keep_html = html_for_pdf is not None
-            if not html_for_pdf:
-                from .ea_docs_render import render_html_document
-
-                tmp_html = out_dir / f"{ea_spec.name}.docs.html"
-                tmp_html.write_text(
-                    render_html_document(content), encoding="utf-8",
-                )
-                html_for_pdf = str(tmp_html)
-            pdf_path = out_dir / f"{ea_spec.name}.docs.pdf"
-            ok = ea_docs_pdf_mod.render_pdf(Path(html_for_pdf), pdf_path)
-            if ok:
-                written["pdf"] = str(pdf_path)
-            else:
-                pdf_error = (
-                    "pdf render skipped: no headless-Chrome binary found "
-                    f"(set ${ea_docs_pdf_mod.ENV_CHROME_PATH} to override)"
-                )
-            if not keep_html:
-                try:
-                    Path(html_for_pdf).unlink()
-                except OSError:
-                    pass
+    except OSError as exc:
+        # Reading the .mq5 file is the only step before delegating to
+        # ``write_docs_to_disk``; if we can't even read source, surface
+        # that here so the stage stays informational + non-raising.
+        report.docs = {"error": f"docs render failed: {exc}"}
+        return
+    result = write_docs_to_disk(
+        ea_spec, mq5_text, out_dir,
+        lang=lang, formats=formats, build_meta=build_meta,
+    )
+    if result.get("ok"):
         report.docs = {
             "ok": True,
-            "lang": lang,
-            "formats": list(formats),
-            "outputs": written,
+            "lang": result["lang"],
+            "formats": result["formats"],
+            "outputs": result["outputs"],
         }
-        if pdf_error:
-            report.docs["pdf_error"] = pdf_error
-    except (OSError, ValueError) as exc:
-        # Same rationale as the dashboard guard — informational stage,
-        # never red-list a green build.
-        report.docs = {"error": f"docs render failed: {exc}"}
+        if "pdf_error" in result:
+            report.docs["pdf_error"] = result["pdf_error"]
+    else:
+        report.docs = {"error": result.get("error", "docs render failed")}
 
 
 def docs_status_lines(stages: "list[StageResult]") -> tuple[str, str]:
