@@ -515,3 +515,262 @@ def test_extensions_must_be_mappings() -> None:
             spec_schema.validate({**MINIMAL, key: ["bad", "shape"]})
         assert key in str(excinfo.value)
         assert "mapping" in str(excinfo.value)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-8 schema extensions: trailing / partial_close / correlation / swap_filter
+# / logs. All five blocks are optional and purely additive — specs that
+# don't supply them must round-trip unchanged.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_trailing_block_accepted_atr_mode() -> None:
+    out = spec_schema.validate({
+        **MINIMAL,
+        "trailing": {
+            "enabled": True, "mode": "atr",
+            "start_pips": 20.0, "step_pips": 5.0,
+            "min_distance_pips": 3.0,
+            "atr_period": 14, "atr_mult": 2.5,
+        },
+    })
+    assert out.trailing is not None
+    assert out.trailing.enabled is True
+    assert out.trailing.mode == "atr"
+    assert out.trailing.atr_period == 14
+    d = out.trailing.to_dict()
+    assert d["mode"] == "atr"
+    assert d["atr_mult"] == 2.5
+
+
+def test_trailing_rejects_unknown_mode() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL, "trailing": {"mode": "magic"},
+        })
+    assert "trailing.mode" in str(excinfo.value)
+    assert "magic" in str(excinfo.value)
+
+
+def test_trailing_rejects_negative_step_pips() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL, "trailing": {"step_pips": -1.0},
+        })
+    assert "step_pips" in str(excinfo.value)
+
+
+def test_trailing_rejects_unknown_keys() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL, "trailing": {"enabled": True, "magic_field": 1},
+        })
+    assert "trailing" in str(excinfo.value) and "magic_field" in str(excinfo.value)
+
+
+def test_partial_close_block_accepted_with_levels() -> None:
+    out = spec_schema.validate({
+        **MINIMAL,
+        "partial_close": {
+            "enabled": True,
+            "levels": [
+                {"at_pips": 20.0, "pct": 50.0},
+                {"at_pips": 50.0, "pct": 30.0},
+            ],
+            "move_sl_to_breakeven_after_first": True,
+            "breakeven_buffer_pips": 2.0,
+        },
+    })
+    assert out.partial_close is not None
+    assert len(out.partial_close.levels) == 2
+    assert out.partial_close.move_sl_to_breakeven_after_first is True
+    d = out.partial_close.to_dict()
+    assert d["levels"][0]["at_pips"] == 20.0
+    assert d["levels"][0]["pct"] == 50.0
+
+
+def test_partial_close_rejects_levels_missing_required_key() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "partial_close": {"levels": [{"at_pips": 20.0}]},  # missing 'pct'
+        })
+    assert "pct" in str(excinfo.value)
+
+
+def test_partial_close_rejects_level_with_unknown_key() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "partial_close": {"levels": [{"at_pips": 20.0, "pct": 50.0, "bogus": 1}]},
+        })
+    msg = str(excinfo.value)
+    assert "bogus" in msg
+
+
+def test_partial_close_rejects_non_list_levels() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL, "partial_close": {"levels": "not-a-list"},
+        })
+    assert "levels" in str(excinfo.value)
+
+
+def test_correlation_block_accepted() -> None:
+    out = spec_schema.validate({
+        **MINIMAL,
+        "correlation": {
+            "max_correlated_positions": 2,
+            "correlation_threshold": 0.8,
+            "correlation_window_bars": 100,
+            "symbol_group": ["EURUSD", "GBPUSD", "AUDUSD"],
+            "block_if_correlated_loss": True,
+        },
+    })
+    assert out.correlation is not None
+    assert out.correlation.symbol_group == ["EURUSD", "GBPUSD", "AUDUSD"]
+    assert out.correlation.block_if_correlated_loss is True
+
+
+def test_correlation_threshold_rejects_out_of_range() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "correlation": {"correlation_threshold": 1.5},
+        })
+    assert "correlation_threshold" in str(excinfo.value)
+
+
+def test_correlation_rejects_non_string_symbol_group() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "correlation": {"symbol_group": ["EURUSD", 42]},
+        })
+    assert "symbol_group" in str(excinfo.value)
+
+
+def test_swap_filter_block_accepted_with_negative_cap() -> None:
+    """Daily swap pip caps can be negative — many brokers charge negative
+    swaps on every position regardless of direction."""
+    out = spec_schema.validate({
+        **MINIMAL,
+        "swap_filter": {
+            "max_long_swap_pips_per_day": -1.5,
+            "max_short_swap_pips_per_day": -1.0,
+            "max_hold_bars_if_negative_swap": 24,
+            "skip_wednesday_triple_swap": True,
+        },
+    })
+    assert out.swap_filter is not None
+    assert out.swap_filter.skip_wednesday_triple_swap is True
+    d = out.swap_filter.to_dict()
+    assert d["max_long_swap_pips_per_day"] == -1.5
+
+
+def test_swap_filter_rejects_bool_for_int_field() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "swap_filter": {"max_hold_bars_if_negative_swap": True},
+        })
+    assert "max_hold_bars_if_negative_swap" in str(excinfo.value)
+
+
+def test_logs_block_accepted() -> None:
+    out = spec_schema.validate({
+        **MINIMAL,
+        "logs": {
+            "enabled": True, "level": "info",
+            "to_file": True, "file_pattern": "logs/{ea}_{date}.log",
+            "to_terminal": False, "redact_account_numbers": True,
+        },
+    })
+    assert out.logs is not None
+    assert out.logs.level == "info"
+    d = out.logs.to_dict()
+    assert d["file_pattern"] == "logs/{ea}_{date}.log"
+    # to_terminal=False must be serialised because the dataclass default is True.
+    assert d["to_terminal"] is False
+
+
+def test_logs_rejects_unknown_level() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL, "logs": {"level": "verbose"},
+        })
+    assert "logs.level" in str(excinfo.value)
+
+
+def test_logs_rejects_empty_file_pattern() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL, "logs": {"file_pattern": ""},
+        })
+    assert "file_pattern" in str(excinfo.value)
+
+
+def test_pr8_extensions_omitted_when_not_provided() -> None:
+    """Specs that don't supply the new PR-8 blocks must round-trip cleanly."""
+    out = spec_schema.validate(dict(MINIMAL))
+    for name in ("trailing", "partial_close", "correlation",
+                 "swap_filter", "logs"):
+        assert getattr(out, name) is None
+    d = out.to_dict()
+    for name in ("trailing", "partial_close", "correlation",
+                 "swap_filter", "logs"):
+        assert name not in d
+
+
+def test_all_pr8_extensions_together() -> None:
+    out = spec_schema.validate({
+        **MINIMAL,
+        "trailing":      {"enabled": True, "mode": "fixed", "step_pips": 5.0},
+        "partial_close": {"enabled": True, "levels": [{"at_pips": 10, "pct": 50}]},
+        "correlation":   {"max_correlated_positions": 1,
+                          "correlation_threshold": 0.7},
+        "swap_filter":   {"skip_wednesday_triple_swap": True},
+        "logs":          {"enabled": True, "level": "debug"},
+    })
+    d = out.to_dict()
+    assert d["trailing"]["mode"] == "fixed"
+    assert d["partial_close"]["levels"][0]["pct"] == 50.0
+    assert d["correlation"]["correlation_threshold"] == 0.7
+    assert d["swap_filter"]["skip_wednesday_triple_swap"] is True
+    assert d["logs"]["level"] == "debug"
+
+
+def test_pr8_extensions_must_be_mappings() -> None:
+    for key in ("trailing", "partial_close", "correlation",
+                "swap_filter", "logs"):
+        with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+            spec_schema.validate({**MINIMAL, key: ["bad", "shape"]})
+        assert key in str(excinfo.value)
+        assert "mapping" in str(excinfo.value)
+
+
+def test_pr8_all_eight_extensions_coexist() -> None:
+    """Sanity: the 3 PR-2 blocks and the 5 PR-8 blocks can be supplied
+    in the same spec without colliding."""
+    out = spec_schema.validate({
+        **MINIMAL,
+        "prop_firm":     {"daily_dd_pct": 4.0},
+        "time_exit":     {"close_on_friday": True},
+        "stealth":       {"split_orders": True},
+        "trailing":      {"enabled": True},
+        "partial_close": {"enabled": True},
+        "correlation":   {"max_correlated_positions": 1},
+        "swap_filter":   {"skip_wednesday_triple_swap": True},
+        "logs":          {"enabled": True},
+    })
+    d = out.to_dict()
+    for name in ("prop_firm", "time_exit", "stealth", "trailing",
+                 "partial_close", "correlation", "swap_filter", "logs"):
+        assert name in d
+
+
+def test_pr8_unknown_top_level_key_still_caught() -> None:
+    """Adding the 5 new blocks must not weaken the unknown-top-level
+    rejection — an unexpected top-level key is still an error."""
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({**MINIMAL, "bogus_section": {}})
+    assert "bogus_section" in str(excinfo.value)

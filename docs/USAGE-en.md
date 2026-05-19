@@ -456,11 +456,17 @@ when `MQL5_FORGE_TOKEN` is available, structured dry-run payload
 otherwise. Chain them to embed the public dashboard URL directly into
 the Forge PR body.
 
-**Spec schema additions (PR-2):** three optional, back-compat blocks
-on `ea-spec.yaml` — `prop_firm` (FTMO/MFF DD limits + news block +
-weekend-flat), `time_exit` (Friday close, max trade duration, session
-windows), `stealth` (slippage / comment / lot-jitter randomisation,
-split orders). Specs that don't supply them validate unchanged.
+**Spec schema additions (PR-2 + PR-8):** eight optional, back-compat
+blocks on `ea-spec.yaml`. PR-2 added `prop_firm` (FTMO/MFF DD limits
++ news block + weekend-flat), `time_exit` (Friday close, max trade
+duration, session windows), `stealth` (slippage / comment / lot-jitter
+randomisation, split orders). PR-8 adds `trailing` (fixed/ATR/parabolic
+trailing-stop), `partial_close` (scale-out levels + move-SL-to-breakeven
+trigger), `correlation` (max correlated positions, Pearson threshold,
+symbol group, block-on-correlated-loss), `swap_filter` (per-side daily
+swap pip caps, skip Wednesday triple-swap), and `logs` (level, file
+pattern, terminal output, account-number redaction). Specs that don't
+supply them validate unchanged.
 
 **PR-7 (discovery / fix-loop helpers):** `discover.doctor` runs the
 kit's environment doctor (Python / Wine / MetaEditor / required

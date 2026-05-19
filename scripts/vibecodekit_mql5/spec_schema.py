@@ -50,6 +50,12 @@ from vibecodekit_mql5.spec_extensions import (  # noqa: F401
     validate_stealth,
     validate_time_exit,
 )
+# PR-8 schema extensions: 5 more optional, back-compat blocks. Re-export so
+# call sites (and tests) keep importing from ``spec_schema``.
+from vibecodekit_mql5.spec_blocks_extra import (  # noqa: F401
+    EXTRA_BLOCK_VALIDATORS, CorrelationConfig, LogsConfig,
+    PartialCloseConfig, SwapFilterConfig, TrailingConfig,
+)
 
 
 VALID_MODES: frozenset[str] = frozenset({"personal", "team", "enterprise"})
@@ -148,6 +154,11 @@ class EaSpec:
     prop_firm: PropFirmConfig | None = None
     time_exit: TimeExitConfig | None = None
     stealth: StealthConfig | None = None
+    trailing: TrailingConfig | None = None
+    partial_close: PartialCloseConfig | None = None
+    correlation: CorrelationConfig | None = None
+    swap_filter: SwapFilterConfig | None = None
+    logs: LogsConfig | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -169,6 +180,11 @@ class EaSpec:
             out["time_exit"] = self.time_exit.to_dict()
         if self.stealth is not None:
             out["stealth"] = self.stealth.to_dict()
+        for name in ("trailing", "partial_close", "correlation",
+                     "swap_filter", "logs"):
+            cfg = getattr(self, name)
+            if cfg is not None:
+                out[name] = cfg.to_dict()
         return out
 
 
@@ -392,10 +408,15 @@ def validate(
     prop_firm = _validate_prop_firm(errors, spec.get("prop_firm"))
     time_exit = _validate_time_exit(errors, spec.get("time_exit"))
     stealth = _validate_stealth(errors, spec.get("stealth"))
+    extras = {
+        n: v(errors, spec.get(n), check_num_range=_check_num_range)
+        for n, v in EXTRA_BLOCK_VALIDATORS
+    }
 
     unknown_top = set(spec.keys()) - {
         *REQUIRED_TOP_FIELDS, "mode", "risk", "signals", "filters", "hooks",
         "prop_firm", "time_exit", "stealth",
+        "trailing", "partial_close", "correlation", "swap_filter", "logs",
     }
     if unknown_top:
         errors.append(f"spec has unknown top-level keys: {sorted(unknown_top)}")
@@ -418,6 +439,7 @@ def validate(
         prop_firm=prop_firm,
         time_exit=time_exit,
         stealth=stealth,
+        **extras,
     )
 
 
