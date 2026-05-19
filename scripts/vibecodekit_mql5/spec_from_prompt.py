@@ -21,6 +21,14 @@ Design choices
 * **Idempotent**. Re-running the parser on its own emitted YAML produces
   the same YAML (the round-trip is covered by tests).
 
+Module layout — kept under the 400-LOC audit ceiling via two siblings:
+
+* :mod:`vibecodekit_mql5.spec_from_prompt_recognisers` — recogniser
+  tables + low-level match helpers for the original schema fields
+  (preset, stack, symbol, timeframe, risk, signals, name).
+* :mod:`vibecodekit_mql5.spec_from_prompt_blocks` — PR-2 / PR-8
+  optional block matchers + YAML emitter helpers.
+
 CLI
 ---
 
@@ -36,87 +44,31 @@ the prompt (default: fall back to schema defaults silently).
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import build as build_mod
 from . import spec_schema
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Recognisers
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Trading pairs the kit's archetypes can target. We deliberately keep this
-# explicit instead of a generic 6-letter regex because plain word boundaries
-# would happily match prose tokens like ``"DOMAIN"`` or ``"BUFFER"``.
-_FX_MAJORS = (
-    "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "NZDUSD", "USDCAD",
-    "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "EURAUD", "EURCHF", "GBPCHF",
+from .spec_from_prompt_blocks import (
+    BLOCK_MATCHERS,
+    OPTIONAL_BLOCKS,
 )
-_METALS_CRYPTO = ("XAUUSD", "XAGUSD", "BTCUSD", "ETHUSD")
-_INDICES = ("US30", "US500", "NAS100", "GER40", "UK100", "JPN225")
-
-_SYMBOLS: tuple[str, ...] = _FX_MAJORS + _METALS_CRYPTO + _INDICES
-
-# Strategy Tester timeframes accepted by MetaTrader 5.
-_TIMEFRAMES: tuple[str, ...] = (
-    "M1", "M2", "M3", "M4", "M5", "M6", "M10", "M12", "M15", "M20", "M30",
-    "H1", "H2", "H3", "H4", "H6", "H8", "H12",
-    "D1", "W1", "MN1",
+from .spec_from_prompt_recognisers import (
+    PRESET_KEYWORDS_PATTERNS,
+    STACK_KEYWORDS,
+    SYMBOLS,
+    TIMEFRAMES,
+    looked_up,
+    match_name,
+    match_preset,
+    match_risk,
+    match_signals,
+    match_stack,
+    match_symbol,
+    match_timeframe,
 )
-
-# Keyword → (preset, stack). The first hit in source-order wins so callers
-# can short-circuit a generic "stdlib" mention with a more specific one
-# ("trend stdlib …" → trend, not stdlib).
-_PRESET_KEYWORDS: tuple[tuple[str, tuple[str, str]], ...] = (
-    # ── archetype-first hints ──
-    (r"\btrend(?:[\s-]?follow(?:ing)?)?\b",  ("trend", "netting")),
-    (r"\bmean[\s-]?revers(?:ion|ing)\b",     ("mean-reversion", "hedging")),
-    (r"\bbreak[\s-]?out\b",                  ("breakout", "netting")),
-    (r"\bscalp(?:ing|er)?\b",                ("scalping", "hedging")),
-    (r"\bhft\b",                             ("hft-async", "netting")),
-    (r"\bnews(?:[\s-]?trad(?:ing|e))?\b",    ("news-trading", "netting")),
-    (r"\barbitrage\b",                       ("arbitrage-stat", "python-bridge")),
-    (r"\bgrid\b",                            ("grid", "hedging")),
-    (r"\bdca\b",                             ("dca", "hedging")),
-    (r"\bhedg(?:e|ing)[\s-]?multi\b",        ("hedging-multi", "hedging")),
-    (r"\bml[\s-]?onnx\b|\bonnx\b|\bmachine[\s-]?learn(?:ing)?\b",
-                                             ("ml-onnx", "python-bridge")),
-    (r"\bllm\b|\bgpt\b|\bclaude\b|\bollama\b",
-                                             ("service-llm-bridge", "cloud-api")),
-    (r"\bservice\b|\bdaemon\b",              ("service", "standalone")),
-    (r"\bportfolio(?:[\s-]?basket)?\b|\bbasket\b",
-                                             ("portfolio-basket", "netting")),
-    (r"\bwizard\b",                          ("wizard-composable", "netting")),
-    # ── stdlib fallback ──
-    (r"\bstdlib\b|\bstandard[\s-]?library\b",("stdlib", "netting")),
-)
-
-# Stack overrides spotted after the preset has been chosen.
-_STACK_KEYWORDS: tuple[tuple[str, str], ...] = (
-    (r"\bnetting\b",            "netting"),
-    (r"\bhedg(?:e|ing)\b",      "hedging"),
-    (r"\bpython[\s-]?bridge\b", "python-bridge"),
-    (r"\bself[\s-]?hosted\b|\bollama\b",         "self-hosted-ollama"),
-    (r"\bembedded\b|\bembedded[\s-]?onnx\b",     "embedded-onnx-llm"),
-    (r"\bcloud(?:[\s-]?api)?\b|\bopenai\b|\bclaude\b",
-                                                 "cloud-api"),
-    (r"\bstandalone\b",         "standalone"),
-)
-
-# Indicator keywords used by the ``signals:`` block. Maps free-text to the
-# canonical ``kind`` accepted by ``spec_schema.VALID_SIGNAL_KINDS``.
-_SIGNAL_KEYWORDS: tuple[tuple[str, str], ...] = (
-    (r"\bmacd\b",                            "macd"),
-    (r"\bsar\b|\bparabolic\b",               "sar"),
-    (r"\brsi\b",                             "rsi"),
-    (r"\bema[\s-]?cross\b|\bma[\s-]?cross\b","ema_cross"),
-    (r"\bbb\b|\bbollinger\b|\bbbands\b",     "bbands"),
-    (r"\batr[\s-]?break\b|\batr\b",          "atr_break"),
-)
+from .spec_from_prompt_yaml import emit_yaml_block
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -154,20 +106,18 @@ def parse(prompt: str) -> PromptParseResult:
         result.defaulted = ["everything"]
         return result
 
-    preset, preset_stack = _match_preset(text)
-    stack = _match_stack(text, fallback=preset_stack)
+    preset, preset_stack = match_preset(text)
+    stack = match_stack(text, fallback=preset_stack)
     # The schema enforces ``(preset, stack)`` compatibility, so we clamp
     # the prompt's stack hint to what the chosen preset actually supports.
-    # Prefer ``preset_stack`` (the default associated with the preset's
-    # archetype keyword), fall back to the first supported stack otherwise.
     allowed = build_mod.PRESETS.get(preset, [])
     if allowed and stack not in allowed:
         stack = preset_stack if preset_stack in allowed else allowed[0]
-    symbol = _match_symbol(text)
-    timeframe = _match_timeframe(text)
-    risk = _match_risk(text)
-    signals = _match_signals(text)
-    name = _match_name(text, preset=preset, symbol=symbol, timeframe=timeframe)
+    symbol = match_symbol(text)
+    timeframe = match_timeframe(text)
+    risk = match_risk(text)
+    signals = match_signals(text)
+    name = match_name(text, preset=preset, symbol=symbol, timeframe=timeframe)
 
     spec: dict[str, object] = {
         "name": name,
@@ -181,13 +131,24 @@ def parse(prompt: str) -> PromptParseResult:
     if signals:
         spec["signals"] = signals
 
+    # PR-2 / PR-8 optional blocks — only added when the prompt actually
+    # mentions them. Each matcher returns ``None`` if it has nothing to
+    # contribute, preserving back-compat with prompts that don't mention
+    # any of these features.
+    optional_blocks = {
+        name: fn(text) for name, fn in BLOCK_MATCHERS.items()
+    }
+    for block_name, block_value in optional_blocks.items():
+        if block_value:
+            spec[block_name] = block_value
+
     # Track what we inferred vs what we defaulted, for transparency.
     inferred: list[str] = ["name"]
     for k, v in (
-        ("preset", _looked_up(text, _PRESET_KEYWORDS_PATTERNS)),
-        ("stack",  _looked_up(text, _STACK_KEYWORDS)),
-        ("symbol", any(s.upper() in text.upper() for s in _SYMBOLS)),
-        ("timeframe", any(tf in text.upper() for tf in _TIMEFRAMES)),
+        ("preset", looked_up(text, PRESET_KEYWORDS_PATTERNS)),
+        ("stack",  looked_up(text, STACK_KEYWORDS)),
+        ("symbol", any(s.upper() in text.upper() for s in SYMBOLS)),
+        ("timeframe", any(tf in text.upper() for tf in TIMEFRAMES)),
         ("risk",   bool(risk)),
         ("signals",bool(signals)),
     ):
@@ -195,152 +156,14 @@ def parse(prompt: str) -> PromptParseResult:
             inferred.append(k)
         else:
             result.defaulted.append(k)
+    for block_name in OPTIONAL_BLOCKS:
+        if optional_blocks[block_name]:
+            inferred.append(block_name)
+        else:
+            result.defaulted.append(block_name)
     result.spec = spec
     result.inferred = inferred
     return result
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Match helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Precompiled patterns kept here so the recogniser tables stay readable.
-_PRESET_KEYWORDS_PATTERNS = tuple((pat, *_) for pat, *_ in _PRESET_KEYWORDS)
-
-
-def _looked_up(text: str, table) -> bool:
-    """True iff *any* pattern in ``table`` matches ``text``."""
-    return any(re.search(pat, text, re.IGNORECASE) for pat, *_ in table)
-
-
-def _match_preset(text: str) -> tuple[str, str]:
-    for pat, (preset, stack) in _PRESET_KEYWORDS:
-        if re.search(pat, text, re.IGNORECASE):
-            return preset, stack
-    # Fall back to the safest archetype.
-    return "stdlib", "netting"
-
-
-def _match_stack(text: str, fallback: str) -> str:
-    """Prefer explicit stack mentions over the preset default."""
-    for pat, stack in _STACK_KEYWORDS:
-        if re.search(pat, text, re.IGNORECASE):
-            return stack
-    return fallback
-
-
-def _match_symbol(text: str) -> str:
-    """Pick the first known trading symbol in the prompt; default EURUSD."""
-    up = text.upper()
-    for sym in _SYMBOLS:
-        # Word-boundary matching so ``EURUSDH1`` (without space) still parses.
-        if re.search(rf"\b{sym}\b", up):
-            return sym
-    # Also accept slash forms like ``EUR/USD``.
-    m = re.search(r"\b([A-Z]{3})\s*/\s*([A-Z]{3})\b", up)
-    if m:
-        joined = m.group(1) + m.group(2)
-        if joined in _SYMBOLS:
-            return joined
-    return "EURUSD"
-
-
-def _match_timeframe(text: str) -> str:
-    up = text.upper()
-    for tf in _TIMEFRAMES:
-        if re.search(rf"\b{tf}\b", up):
-            return tf
-    return "H1"
-
-
-def _match_risk(text: str) -> dict[str, float | int]:
-    """Extract overrides for the risk block, if any are mentioned."""
-    out: dict[str, float | int] = {}
-
-    # ``risk 0.5%`` / ``0.5% risk`` / ``risk_per_trade 0.5``
-    m = re.search(
-        r"(?:risk(?:[\s_]*per[\s_]*trade)?\s*[:=]?\s*([\d.]+)\s*%?"
-        r"|([\d.]+)\s*%\s*risk)",
-        text, re.IGNORECASE,
-    )
-    if m:
-        out["per_trade_pct"] = float(m.group(1) or m.group(2))
-
-    # ``daily loss 5%`` / ``daily_loss 5``
-    m = re.search(
-        r"\bdaily[\s_]*loss\s*[:=]?\s*([\d.]+)\s*%?", text, re.IGNORECASE,
-    )
-    if m:
-        out["daily_loss_pct"] = float(m.group(1))
-
-    # ``SL 30`` / ``sl 30 pips`` / ``stop[-]loss 30``
-    m = re.search(
-        r"\b(?:sl|stop[\s-]?loss)\s*[:=]?\s*([\d]+)\s*(?:pips?)?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        out["sl_pips"] = int(m.group(1))
-
-    # ``TP 60`` / ``tp 60 pips`` / ``take[-]profit 60``
-    m = re.search(
-        r"\b(?:tp|take[\s-]?profit)\s*[:=]?\s*([\d]+)\s*(?:pips?)?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        out["tp_pips"] = int(m.group(1))
-
-    # ``max spread 3 pips`` / ``spread cap 3``
-    m = re.search(
-        r"\b(?:max[\s_]*spread|spread[\s_]*cap)\s*[:=]?\s*([\d.]+)\s*(?:pips?)?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        out["max_spread_pips"] = float(m.group(1))
-
-    # ``max positions 3`` / ``up to 5 positions``
-    m = re.search(
-        r"\b(?:max[\s_]*(?:open[\s_]*)?positions?|up[\s_]*to)\s*([\d]+)\s*(?:positions?|trades?)?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        out["max_open_positions"] = int(m.group(1))
-    return out
-
-
-def _match_signals(text: str) -> dict[str, object] | None:
-    """Return a ``signals`` block matching the schema's mapping shorthand.
-
-    The MVP block keeps every indicator at its default params; only the
-    kind and the combine-logic are inferred from the prompt. We emit the
-    ``{list: [...], logic: ...}`` mapping form (rather than the bare list
-    form) because that's the only way the schema lets us attach the
-    combine-logic alongside the entries.
-    """
-    found: list[str] = []
-    for pat, kind in _SIGNAL_KEYWORDS:
-        if re.search(pat, text, re.IGNORECASE) and kind not in found:
-            found.append(kind)
-    if not found:
-        return None
-    logic = "OR" if re.search(r"\bor\b", text, re.IGNORECASE) else "AND"
-    return {
-        "logic": logic,
-        "list": [{"kind": k} for k in found],
-    }
-
-
-def _match_name(
-    text: str, *, preset: str, symbol: str, timeframe: str,
-) -> str:
-    """Extract a user-supplied name or synthesise one from preset+symbol+tf."""
-    m = re.search(
-        r"\b(?:name(?:d)?(?:\s+as)?|call(?:ed)?)\s*[:=]?\s*([A-Za-z0-9_]+)\b",
-        text,
-    )
-    if m:
-        return m.group(1)
-    # Auto-name keeps things short and slug-y.
-    return f"{preset.replace('-', '_').title().replace('_', '')}{symbol}{timeframe}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -362,7 +185,8 @@ def to_yaml(spec: dict[str, object]) -> str:
     """Emit a minimal YAML serialisation of ``spec``.
 
     Only handles the subset of types this module produces: strings, ints,
-    floats, lists of dicts. Output is stable so test fixtures don't churn.
+    floats, lists of dicts, plus the dict-shaped PR-2 / PR-8 optional
+    blocks. Output is stable so test fixtures don't churn.
     """
     lines: list[str] = []
     for key in ("name", "preset", "stack", "symbol", "timeframe", "mode"):
@@ -397,6 +221,16 @@ def to_yaml(spec: dict[str, object]) -> str:
                 assert isinstance(entry, dict)
                 (k, v), = entry.items()
                 lines.append(f"  - {k}: {v}")
+
+    # PR-2 / PR-8 optional blocks — emit in canonical order so test
+    # fixtures don't churn. Skip any block not present in the spec.
+    for block_name in OPTIONAL_BLOCKS:
+        if block_name not in spec:
+            continue
+        block = spec[block_name]
+        assert isinstance(block, dict), block_name
+        lines.append(f"{block_name}:")
+        lines.extend(emit_yaml_block(block, indent=2))
     return "\n".join(lines) + "\n"
 
 
