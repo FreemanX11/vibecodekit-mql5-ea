@@ -8,7 +8,9 @@ This is the 4th MCP server in the kit, joining `metaeditor-bridge`,
 `mt5-bridge`, and `algo-forge-bridge`. Same wire format — same
 `initialize` / `tools/list` / `tools/call` envelope.
 
-## PR-1 tool set (4)
+## Tool set (11)
+
+### PR-1: prompt → spec → build → permission-gate (4 tools)
 
 | Tool | Wraps | One-line purpose |
 |------|-------|------------------|
@@ -17,11 +19,41 @@ This is the 4th MCP server in the kit, joining `metaeditor-bridge`,
 | `build.auto`        | `vibecodekit_mql5.auto_build.run_pipeline` | scan → render → lint → compile → permission gate → dashboard. |
 | `verify.permission` | `vibecodekit_mql5.permission.orchestrator.run` | 7-layer fail-fast gate (modes: personal/team/enterprise). |
 
+### PR-2: verify suite + spec schema extension (7 tools)
+
+| Tool | Wraps | One-line purpose |
+|------|-------|------------------|
+| `verify.lint`               | `vibecodekit_mql5.lint.lint_file`                    | 8 critical-tier AP detectors (AP-1/3/5/15/17/18/20/21). |
+| `verify.lint_best_practice` | `vibecodekit_mql5.lint_best_practice.BEST_PRACTICE_DETECTORS` | 14 WARN-tier AP detectors (AP-2/4/6/7/8/9/10/11/12/13/14/16/19/22). |
+| `verify.method_hiding`      | `vibecodekit_mql5.method_hiding_check.check_method_hiding` | CExpert-subclass-without-`using` (ERROR ≥ build 5260). |
+| `verify.trader17`           | `vibecodekit_mql5.trader_check.evaluate` + `verdict` | 17-point reliability checklist; verdict by mode. |
+| `verify.compile`            | `vibecodekit_mql5.compile.compile_mq5`               | MetaEditor compile (Wine on Linux) — convenience over `metaeditor.compile`. |
+| `verify.broker_safety`      | `vibecodekit_mql5.broker_safety.evaluate`            | fill-policy / lot-step / min-lot / magic-range against a symbol-info JSON. |
+| `verify.audit`              | `vibecodekit_mql5.audit.run_audit`                   | Kit conformance battery (~70 probes). |
+
+### `ea-spec.yaml` schema additions (PR-2)
+
+Three optional, back-compat blocks were added so AI agents can talk
+about prop-firm constraints, time-based exits, and broker-stealth
+toggles without round-tripping through free-text comments:
+
+| Block | What it captures |
+|-------|------------------|
+| `prop_firm` | `daily_dd_pct`, `max_dd_pct`, `profit_target_pct`, `news_block_min`, `weekend_flat`, `copy_trading_lock`. |
+| `time_exit` | `close_on_friday`, `friday_close_hour`, `max_trade_hours`, `session_start_hour`, `session_end_hour`. |
+| `stealth`   | `randomize_slippage_pips`, `randomize_comment_pool`, `randomize_lot_jitter_pct`, `split_orders`, `avoid_round_numbers`. |
+
+Specs that don't supply these blocks validate unchanged — the kit's
+existing scaffolds continue to render exactly as before. Templates
+that *do* want to consume these blocks can read them from the
+normalised `EaSpec` dataclass.
+
 Future PRs will extend `DISPATCH` with the remaining verify / review /
-backtest tools (`verify.lint`, `verify.trader17`, `verify.backtest`,
-`verify.walkforward`, `verify.montecarlo`, `verify.multibroker`,
-`review.eng`, `review.cso`, `review.ceo`, `review.investigate`,
-`rri.persona`, `dashboard.publish`, …). The wire format does not change.
+backtest tools (`verify.backtest`, `verify.walkforward`,
+`verify.montecarlo`, `verify.multibroker`, `verify.fitness`,
+`verify.mfe_mae`, `verify.overfit`, `review.eng`, `review.cso`,
+`review.ceo`, `review.investigate`, `rri.persona`,
+`dashboard.publish`, …). The wire format does not change.
 
 ## Launch directly
 

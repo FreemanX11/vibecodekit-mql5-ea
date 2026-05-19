@@ -352,3 +352,166 @@ def test_run_pipeline_without_spec_signals_omits_signals_md(
     assert report.ok
     assert not (out_dir / "signals.md").exists(), \
         "signals.md should be omitted when spec.signals + spec.filters are empty"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR-2 schema extensions: prop_firm / time_exit / stealth
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_prop_firm_block_accepted_and_normalized() -> None:
+    out = spec_schema.validate({
+        **MINIMAL,
+        "prop_firm": {
+            "daily_dd_pct": 5.0, "max_dd_pct": 10.0,
+            "profit_target_pct": 8.0, "news_block_min": 30,
+            "weekend_flat": True, "copy_trading_lock": False,
+        },
+    })
+    assert out.prop_firm is not None
+    assert out.prop_firm.daily_dd_pct == 5.0
+    assert out.prop_firm.weekend_flat is True
+    # to_dict() strips defaults (False / None) for cleanliness.
+    d = out.prop_firm.to_dict()
+    assert "copy_trading_lock" not in d
+    assert d["weekend_flat"] is True
+
+
+def test_prop_firm_rejects_out_of_range() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "prop_firm": {"daily_dd_pct": 150.0, "news_block_min": 99999},
+        })
+    msg = str(excinfo.value)
+    assert "daily_dd_pct" in msg
+    assert "news_block_min" in msg
+
+
+def test_prop_firm_rejects_bool_for_numeric_field() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "prop_firm": {"daily_dd_pct": True},
+        })
+    assert "daily_dd_pct" in str(excinfo.value)
+
+
+def test_prop_firm_rejects_unknown_keys() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "prop_firm": {"daily_dd_pct": 5.0, "bogus_field": 1},
+        })
+    msg = str(excinfo.value)
+    assert "prop_firm" in msg and "bogus_field" in msg
+
+
+def test_time_exit_block_accepted() -> None:
+    out = spec_schema.validate({
+        **MINIMAL,
+        "time_exit": {
+            "close_on_friday": True, "friday_close_hour": 20,
+            "max_trade_hours": 48, "session_start_hour": 8,
+            "session_end_hour": 22,
+        },
+    })
+    assert out.time_exit is not None
+    assert out.time_exit.max_trade_hours == 48
+    assert out.time_exit.close_on_friday is True
+
+
+def test_time_exit_allows_hour_zero() -> None:
+    # 0 is a valid hour (midnight) — the bounds use _check_num_range with
+    # min_excl=-1 so 0 passes the strict-greater-than test.
+    out = spec_schema.validate({
+        **MINIMAL,
+        "time_exit": {"session_start_hour": 0, "session_end_hour": 23},
+    })
+    assert out.time_exit is not None
+    assert out.time_exit.session_start_hour == 0
+    assert out.time_exit.session_end_hour == 23
+
+
+def test_time_exit_rejects_max_trade_hours_zero() -> None:
+    # max_trade_hours=0 is meaningless and must be rejected.
+    with pytest.raises(spec_schema.SpecValidationError):
+        spec_schema.validate({
+            **MINIMAL, "time_exit": {"max_trade_hours": 0},
+        })
+
+
+def test_time_exit_rejects_bool_for_int_field() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "time_exit": {"max_trade_hours": True},
+        })
+    assert "max_trade_hours" in str(excinfo.value)
+
+
+def test_stealth_block_accepted_with_comment_pool() -> None:
+    out = spec_schema.validate({
+        **MINIMAL,
+        "stealth": {
+            "randomize_slippage_pips": 2.0,
+            "randomize_comment_pool": ["alpha", "beta"],
+            "randomize_lot_jitter_pct": 1.5,
+            "split_orders": True, "avoid_round_numbers": True,
+        },
+    })
+    assert out.stealth is not None
+    assert out.stealth.randomize_comment_pool == ["alpha", "beta"]
+    assert out.stealth.split_orders is True
+
+
+def test_stealth_rejects_non_string_in_comment_pool() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "stealth": {"randomize_comment_pool": ["ok", 123]},
+        })
+    assert "randomize_comment_pool" in str(excinfo.value)
+
+
+def test_stealth_rejects_unknown_keys() -> None:
+    with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+        spec_schema.validate({
+            **MINIMAL,
+            "stealth": {"foo_bar": 1},
+        })
+    assert "stealth" in str(excinfo.value)
+
+
+def test_extensions_omitted_when_not_provided() -> None:
+    """Specs that don't supply the new blocks must round-trip cleanly."""
+    out = spec_schema.validate(dict(MINIMAL))
+    assert out.prop_firm is None
+    assert out.time_exit is None
+    assert out.stealth is None
+    # to_dict() must NOT include keys for sections the user didn't set.
+    d = out.to_dict()
+    assert "prop_firm" not in d
+    assert "time_exit" not in d
+    assert "stealth" not in d
+
+
+def test_all_three_extensions_together() -> None:
+    out = spec_schema.validate({
+        **MINIMAL,
+        "prop_firm": {"daily_dd_pct": 4.0, "weekend_flat": True},
+        "time_exit": {"close_on_friday": True, "max_trade_hours": 24},
+        "stealth":   {"randomize_slippage_pips": 1.5, "split_orders": True},
+    })
+    d = out.to_dict()
+    assert d["prop_firm"]["daily_dd_pct"] == 4.0
+    assert d["time_exit"]["close_on_friday"] is True
+    assert d["stealth"]["split_orders"] is True
+
+
+def test_extensions_must_be_mappings() -> None:
+    """Lists or scalars in place of an extension block must fail cleanly."""
+    for key in ("prop_firm", "time_exit", "stealth"):
+        with pytest.raises(spec_schema.SpecValidationError) as excinfo:
+            spec_schema.validate({**MINIMAL, key: ["bad", "shape"]})
+        assert key in str(excinfo.value)
+        assert "mapping" in str(excinfo.value)
