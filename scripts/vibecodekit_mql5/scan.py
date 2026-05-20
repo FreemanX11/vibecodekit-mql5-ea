@@ -32,6 +32,30 @@ class ScanReport:
 
 
 def scan_tree(root: Path) -> ScanReport:
+    # PR-21: single-file mode. If ``root`` points at one classified
+    # source file (``.mq5`` / ``.mqh`` / ``.set`` / ``.ex5`` /
+    # ``.onnx``), treat it as a 1-entry inventory. Previously the
+    # function only worked on directories and silently returned
+    # ``{files: [], counts: {}}`` for single files because
+    # ``Path.rglob`` on a file yields nothing — that misled callers
+    # who passed e.g. ``"My EA.mq5"`` straight from a download.
+    #
+    # The report's ``root`` is normalized to the parent directory so
+    # the standard chain pattern ``Path(root) / files[i].path`` keeps
+    # working in both modes.
+    if root.exists() and root.is_file():
+        rep = ScanReport(root=str(root.parent))
+        kind = KIND_BY_EXT.get(root.suffix.lower())
+        if kind is None:
+            return rep
+        rep.files.append({
+            "path": root.name,
+            "kind": kind,
+            "size": root.stat().st_size,
+        })
+        rep.counts = {kind: 1}
+        return rep
+
     rep = ScanReport(root=str(root))
     if not root.exists():
         return rep

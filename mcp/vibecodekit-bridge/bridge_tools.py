@@ -660,14 +660,20 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "for .ex5, onnx-model for .onnx), and returns {root, "
             "files: [{path, kind, size}, …], counts: {kind: n, …}}. "
             "Paths in 'files' are relative to 'root'. Use this first "
-            "when an agent opens an unfamiliar repo."
+            "when an agent opens an unfamiliar repo. PR-21: 'root' "
+            "may also be a single classified file (e.g. a downloaded "
+            "'My EA.mq5'); in that case the tool returns a 1-entry "
+            "inventory with 'root' normalised to the parent directory."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "root": {
                     "type": "string",
-                    "description": "Directory to scan (default: current working dir).",
+                    "description": (
+                        "Directory or single classified source file to "
+                        "scan (default: current working dir)."
+                    ),
                 },
             },
             "required": [],
@@ -1338,13 +1344,22 @@ def _tool_discover_doctor(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _tool_discover_scan(args: dict[str, Any]) -> dict[str, Any]:
-    """Inventory a workspace root (extension → kit-known kind)."""
+    """Inventory a workspace root (extension → kit-known kind).
+
+    PR-21: ``root`` may also point at a single classified source
+    file. The kit's ``scan_tree`` helper normalises the reported
+    ``root`` to the parent directory so the standard chain pattern
+    ``Path(root) / files[i].path`` keeps working in both modes.
+    """
     raw = args.get("root")
     root = Path(raw).expanduser().resolve() if raw else Path.cwd().resolve()
     if not root.exists():
         return {"ok": False, "error": f"root does not exist: {root}"}
-    if not root.is_dir():
-        return {"ok": False, "error": f"root is not a directory: {root}"}
+    if not (root.is_dir() or root.is_file()):
+        return {
+            "ok": False,
+            "error": f"root is neither a directory nor a regular file: {root}",
+        }
     report = scan_mod.scan_tree(root)
     return {
         "ok": True,
