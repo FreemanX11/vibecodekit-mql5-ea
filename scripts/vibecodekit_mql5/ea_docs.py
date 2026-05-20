@@ -37,6 +37,8 @@ from .ea_docs_render import (
     TakeNote,
     TimelineStep,
     render_html_document,
+    section_labels,
+    table_headers,
 )
 from .spec_schema import EaSpec, validate
 
@@ -71,14 +73,20 @@ class BuildMeta:
         return cls(**defaults)
 
 
+# Layer titles + captions for the §2 "System Architecture" stack.
+# Vietnamese is the project default; English is kept for parity.
+# Code identifiers like ``magic registry`` / ``async order book`` are
+# intentional borrow-words — they're MQL5 / trading-engine terms users
+# read in MetaTrader docs, not English explanations to translate.
 _OVERVIEW_LAYER_TEMPLATES: dict[str, dict[str, tuple[str, str, str, str]]] = {
     "vi": {
-        "risk": ("Risk Guard", "Position sizing + daily DD cap + correlation veto",
+        "risk": ("Quản lý vốn",
+                 "Tính size + chặn DD ngày + veto correlation",
                  "pink", "robot"),
-        "signals": ("Signal Fusion",
-                    "{n} signal · {logic} fuse · {filters} filter",
+        "signals": ("Tổng hợp tín hiệu",
+                    "{n} signal · fuse {logic} · {filters} filter",
                     "yellow", "code"),
-        "execution": ("Execution",
+        "execution": ("Thực thi lệnh",
                       "Stealth, magic registry, async order book",
                       "cyan", "browser"),
     },
@@ -95,13 +103,37 @@ _OVERVIEW_LAYER_TEMPLATES: dict[str, dict[str, tuple[str, str, str, str]]] = {
 }
 
 _TIMELINE_LABELS = {
-    "vi": ("Scan", "Compose", "Verify", "Ship"),
+    "vi": ("Quét", "Soạn", "Kiểm", "Phát hành"),
     "en": ("Scan", "Compose", "Verify", "Ship"),
 }
 
 _TIMELINE_CAPTIONS = {
-    "vi": ("Đọc spec", "Render scaffold", "Lint + gate", "Compile + dashboard"),
+    # Verbs are Vietnamese; project-level CLI/stage nouns (``spec``,
+    # ``scaffold``, ``lint``, ``gate``, ``dashboard``) stay as users see
+    # them in the CLI per project convention.
+    "vi": (
+        "Đọc spec",
+        "Sinh code từ scaffold",
+        "Quét lint + cổng kiểm quyền",
+        "Biên dịch + dashboard",
+    ),
     "en": ("Read spec", "Render scaffold", "Lint + gate", "Compile + dashboard"),
+}
+
+# Decorative subtitle that sits above the manifesto card's main claim.
+# Was Japanese decorative text in PR-15/16; user requested 100% Vietnamese
+# in the Vietnamese docs while keeping the visual 「 」 bracket aesthetic.
+_TITLE_SUBTITLE = {
+    "vi": {
+        "portfolio": "Danh mục",
+        "default": "Hệ thống",
+        "suffix": "Kiến trúc",
+    },
+    "en": {
+        "portfolio": "Portfolio",
+        "default": "System",
+        "suffix": "Architecture",
+    },
 }
 
 
@@ -161,8 +193,13 @@ def build_doc_content(
     params = [_input_to_param_row(d) for d in parse_inputs(mq5_text)]
     notes = derive_take_notes(spec, lang=lang)
 
-    title_jp = "ポートフォリオ" if "portfolio" in spec.name.lower() else "システム"
-    title_en_suffix = "Architecture" if lang == "en" else "アーキテクチャ"
+    subtitle = _TITLE_SUBTITLE[lang]
+    title_jp = (
+        subtitle["portfolio"]
+        if "portfolio" in spec.name.lower()
+        else subtitle["default"]
+    )
+    title_en_suffix = subtitle["suffix"]
 
     return DocContent(
         title_main=spec.name.replace("_", " "),
@@ -174,6 +211,7 @@ def build_doc_content(
         params=params,
         notes=notes,
         closing_html=closing_html_fragment,
+        lang=lang,
     )
 
 
@@ -196,7 +234,7 @@ def _render_signals_summary(signal_kinds: str, lang: str) -> str:
     so escape defensively here — same convention as every other
     renderer in ``ea_docs_render``.
     """
-    label = {"vi": "Tín hiệu đã wire", "en": "Wired signals"}[lang]
+    label = _render_signals_summary_labels(lang)
     return (
         '<div class="block yellow">'
         f'<h3 class="h-card">{html.escape(label)}</h3>'
@@ -217,8 +255,12 @@ def render_markdown(content: DocContent) -> str:
 
     Parallel to ``ea_docs_render.render_html_document`` — same data,
     git-diffable text format. Intended for agent consumption and
-    side-by-side review in PRs.
+    side-by-side review in PRs. Section headers and table column
+    labels are localized via ``content.lang``; code identifiers
+    (``input`` names, MQL5 types, defaults) are rendered verbatim.
     """
+    labels = section_labels(content.lang)
+    th = table_headers(content.lang)
     lines: list[str] = []
     lines.append("---")
     for k, v in content.frontmatter.items():
@@ -233,14 +275,14 @@ def render_markdown(content: DocContent) -> str:
     lines.append("")
 
     if content.overview_layers:
-        lines.append("## System Architecture")
+        lines.append(f"## {labels['overview']}")
         lines.append("")
         for layer in content.overview_layers:
             lines.append(f"- **{layer.title}** — {layer.caption}")
         lines.append("")
 
     if content.strategy_timeline:
-        lines.append("## Strategy Evolution")
+        lines.append(f"## {labels['strategy']}")
         lines.append("")
         flow = " → ".join(
             f"**{s.label}**" if s.highlight else s.label
@@ -254,9 +296,9 @@ def render_markdown(content: DocContent) -> str:
         lines.append("")
 
     if content.params:
-        lines.append("## EA Inputs")
+        lines.append(f"## {labels['params']}")
         lines.append("")
-        lines.append("| Group | Name | Type | Default | Note |")
+        lines.append(f"| {th[0]} | {th[1]} | {th[2]} | {th[3]} | {th[4]} |")
         lines.append("|---|---|---|---|---|")
         for p in content.params:
             note = (p.note or "").replace("|", "\\|")
@@ -267,7 +309,7 @@ def render_markdown(content: DocContent) -> str:
         lines.append("")
 
     if content.notes:
-        lines.append("## Take Notes")
+        lines.append(f"## {labels['notes']}")
         lines.append("")
         sev_prefix = {
             "info": "ℹ️", "warn": "⚠️", "danger": "🔥",
@@ -279,6 +321,11 @@ def render_markdown(content: DocContent) -> str:
             lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_signals_summary_labels(lang: str) -> str:
+    """Localized label for the closing "wired signals" fragment."""
+    return {"vi": "Tín hiệu đã wire", "en": "Wired signals"}.get(lang, "Tín hiệu đã wire")
 
 
 # ────────────────────────────────────────────────────────────────────────────

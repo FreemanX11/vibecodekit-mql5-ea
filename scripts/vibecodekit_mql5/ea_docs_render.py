@@ -52,6 +52,49 @@ ICON_NAMES = (
     "rocket", "gear", "robot", "code", "browser", "chat", "chevron", "spark",
 )
 
+# ────────────────────────────────────────────────────────────────────────────
+# Localized labels for the static section headers and table column names.
+#
+# Project identifiers — ``input`` names like ``InpMagic``, class names
+# like ``CRiskGuard``, MQL5 types like ``double`` — are NEVER translated:
+# they live in the rendered code/data, not in this label map.
+# ────────────────────────────────────────────────────────────────────────────
+
+_SECTION_LABELS: dict[str, dict[str, str]] = {
+    "vi": {
+        "overview": "Kiến trúc hệ thống",
+        "strategy": "Chu trình chiến lược",
+        "params": "Tham số EA",
+        "notes": "Lưu ý quan trọng",
+    },
+    "en": {
+        "overview": "System Architecture",
+        "strategy": "Strategy Evolution",
+        "params": "EA Inputs",
+        "notes": "Take Notes",
+    },
+}
+
+_TABLE_HEADERS: dict[str, tuple[str, str, str, str, str]] = {
+    "vi": ("Nhóm", "Tên", "Kiểu", "Mặc định", "Ghi chú"),
+    "en": ("Group", "Name", "Type", "Default", "Note"),
+}
+
+
+def section_labels(lang: str) -> dict[str, str]:
+    """Return the localized section-header labels (``overview``,
+    ``strategy``, ``params``, ``notes``). Unknown languages fall back
+    to Vietnamese, the project default."""
+    return _SECTION_LABELS.get(lang) or _SECTION_LABELS["vi"]
+
+
+def table_headers(lang: str) -> tuple[str, str, str, str, str]:
+    """Return the localized 5-tuple of ``param-table`` column headers.
+
+    Order: ``(group, name, type, default, note)``.
+    Unknown languages fall back to Vietnamese."""
+    return _TABLE_HEADERS.get(lang) or _TABLE_HEADERS["vi"]
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Data model — minimal, all pure-Python so callers can build content fixtures
@@ -113,6 +156,7 @@ class DocContent:
     params: Sequence[ParamRow] = ()
     notes: Sequence[TakeNote] = ()
     closing_html: str = ""  # optional free-form HTML at the end
+    lang: str = "vi"  # locale for section headers + table headers
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -227,13 +271,24 @@ def render_timeline(steps: Sequence[TimelineStep]) -> str:
     return f'<div class="timeline">{"".join(items)}</div>'
 
 
-def render_param_table(rows: Sequence[ParamRow]) -> str:
-    """Render the EA's ``input`` declarations as a styled table."""
+def render_param_table(
+    rows: Sequence[ParamRow],
+    lang: str = "vi",
+) -> str:
+    """Render the EA's ``input`` declarations as a styled table.
+
+    Column headers are localized; ``input`` names, MQL5 types and
+    default values are project-level identifiers and are rendered
+    verbatim regardless of ``lang``."""
     if not rows:
         return ""
+    _group, name, type_, default, note = table_headers(lang)
     head = (
         '<thead><tr>'
-        '<th>Name</th><th>Type</th><th>Default</th><th>Note</th>'
+        f'<th>{escape(name)}</th>'
+        f'<th>{escape(type_)}</th>'
+        f'<th>{escape(default)}</th>'
+        f'<th>{escape(note)}</th>'
         '</tr></thead>'
     )
     body_rows: list[str] = []
@@ -285,18 +340,19 @@ def render_html_document(content: DocContent) -> str:
     fm = render_frontmatter(content.frontmatter)
     manifesto = render_manifesto(content)
 
+    labels = section_labels(content.lang)
     sections: list[str] = []
     if content.overview_layers:
-        sections.append(render_section_header("System Architecture", "robot"))
+        sections.append(render_section_header(labels["overview"], "robot"))
         sections.append(render_layer_stack(content.overview_layers))
     if content.strategy_timeline:
-        sections.append(render_section_header("Strategy Evolution", "rocket"))
+        sections.append(render_section_header(labels["strategy"], "rocket"))
         sections.append(render_timeline(content.strategy_timeline))
     if content.params:
-        sections.append(render_section_header("EA Inputs", "code"))
-        sections.append(render_param_table(content.params))
+        sections.append(render_section_header(labels["params"], "code"))
+        sections.append(render_param_table(content.params, lang=content.lang))
     if content.notes:
-        sections.append(render_section_header("Take Notes", "spark"))
+        sections.append(render_section_header(labels["notes"], "spark"))
         for note in content.notes:
             sections.append(render_take_note(note))
     if content.closing_html:

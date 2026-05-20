@@ -244,3 +244,70 @@ def test_render_html_document_writes_screenshot_compatible_file(
     assert out_html.stat().st_size > 5000
     reread = out_html.read_text(encoding="utf-8")
     assert reread.startswith("<!doctype html>")
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# PR-18.2 — Vietnamese is the project default for ``render_html_document``
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _doc_with_lang(lang: str) -> r.DocContent:
+    return r.DocContent(
+        title_main="EA",
+        overview_layers=[r.LayerSpec("Quản lý vốn", "DD cap", "pink", "robot")],
+        strategy_timeline=[r.TimelineStep("Quét", "Đọc spec", "code")],
+        params=[r.ParamRow("Risk", "InpRiskPct", "double", "0.5", "")],
+        notes=[r.TakeNote("Note", "Body", "info", "spark")],
+        lang=lang,
+    )
+
+
+def test_render_html_document_default_lang_uses_vietnamese_section_headers() -> None:
+    """DocContent.lang defaults to ``vi`` — the four section headers
+    must render in Vietnamese in the produced HTML."""
+    out = r.render_html_document(_doc_with_lang("vi"))
+    assert "Kiến trúc hệ thống" in out
+    assert "Chu trình chiến lược" in out
+    assert "Tham số EA" in out
+    assert "Lưu ý quan trọng" in out
+    # Default render must contain none of the English-only headers:
+    assert "System Architecture" not in out
+    assert "EA Inputs" not in out
+
+
+def test_render_html_document_lang_en_uses_english_section_headers() -> None:
+    out = r.render_html_document(_doc_with_lang("en"))
+    assert "System Architecture" in out
+    assert "Strategy Evolution" in out
+    assert "EA Inputs" in out
+    assert "Take Notes" in out
+
+
+def test_render_param_table_default_headers_are_vietnamese() -> None:
+    rows = [r.ParamRow("Risk", "InpX", "double", "0.5", "")]
+    out = r.render_param_table(rows)
+    # Default lang is Vietnamese.
+    assert "<th>Tên</th>" in out
+    assert "<th>Kiểu</th>" in out
+    assert "<th>Mặc định</th>" in out
+    assert "<th>Ghi chú</th>" in out
+
+
+def test_render_param_table_english_when_lang_en() -> None:
+    rows = [r.ParamRow("Risk", "InpX", "double", "0.5", "")]
+    out = r.render_param_table(rows, lang="en")
+    assert "<th>Name</th>" in out
+    assert "<th>Type</th>" in out
+    assert "<th>Default</th>" in out
+    assert "<th>Note</th>" in out
+
+
+def test_section_labels_falls_back_to_vietnamese_for_unknown_lang() -> None:
+    labels = r.section_labels("zz-unknown")
+    assert labels["overview"] == "Kiến trúc hệ thống"
+    assert labels["params"] == "Tham số EA"
+
+
+def test_table_headers_falls_back_to_vietnamese_for_unknown_lang() -> None:
+    th = r.table_headers("zz-unknown")
+    assert th == ("Nhóm", "Tên", "Kiểu", "Mặc định", "Ghi chú")
