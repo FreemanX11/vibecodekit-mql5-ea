@@ -1,0 +1,22 @@
+name: ThanosEA
+preset: grid
+stack: hedging
+symbol: EURUSD
+timeframe: H1
+mode: enterprise
+risk:
+  per_trade_pct: 2.0
+  daily_loss_pct: 5.0
+  max_spread_pips: 5.0
+  max_open_positions: 20
+  sl_pips: 100
+  tp_pips: 200
+signals:
+  logic: OR
+  list:
+    - kind: rsi
+      period: 5
+      oversold: 15
+      overbought: 85
+trailing:
+  enabled: true
