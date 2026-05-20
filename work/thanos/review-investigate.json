@@ -1,0 +1,118 @@
+# Investigation review
+
+_Goal: capture hypotheses + the evidence each needs._
+
+## Persona: perf-analyst
+_Backtest analyst evaluating tester reports and optimiser output._
+
+- [ ] **perf-01** (critical) — Is the tester report (XML) parsed end-to-end without warnings?
+- [ ] **perf-02** (critical) — Is profit factor (PF) above the personal-mode minimum (≥ 1.3)?
+- [ ] **perf-03** (critical) — Is Sharpe ratio above the personal-mode minimum (≥ 0.5)?
+- [ ] **perf-04** (critical) — Is max relative drawdown within the strategy's stated limit?
+- [ ] **perf-05** (critical) — Is trade-count sample size ≥ 100 in the IS window?
+- [ ] **perf-06** (high) — Is recovery factor (RF = profit / DD) acceptable for risk taken?
+- [ ] **perf-07** (high) — Have winning / losing streak distributions been characterised?
+- [ ] **perf-08** (high) — Are MFE / MAE distributions plotted and reviewed?
+- [ ] **perf-09** (high) — Has the tester data quality (gaps, spread) been audited?
+- [ ] **perf-10** (high) — Is the modelling mode (every-tick vs control) appropriate?
+- [ ] **perf-11** (high) — Has the optimisation criterion produced a smooth landscape?
+- [ ] **perf-12** (high) — Are robustness checks (perturbation of parameters) acceptable?
+- [ ] **perf-13** (standard) — Is the AHPR / GHPR consistent across the optimisation cloud?
+- [ ] **perf-14** (standard) — Is the equity curve free of pathological flat / spike behaviour?
+- [ ] **perf-15** (standard) — Has MFE/MAE correlation been compared across regimes?
+- [ ] **perf-16** (standard) — Are tester slippage / latency assumptions explicit?
+- [ ] **perf-17** (standard) — Has the EP (expected payoff) been compared to live canary?
+- [ ] **perf-18** (standard) — Have outlier trades been audited for data / logic artefacts?
+- [ ] **perf-19** (standard) — Is the tester input-set version-controlled with the .ex5?
+- [ ] **perf-20** (standard) — Have multi-period rolling tests been compared for stability?
+- [ ] **perf-21** (standard) — Is the histogram of trade R-multiples documented?
+- [ ] **perf-22** (standard) — Has selection bias (best-pass picking) been documented and avoided?
+- [ ] **perf-23** (standard) — Are trade-by-trade journals stored for off-line analysis?
+- [ ] **perf-24** (standard) — Have execution-side metrics (slippage, requote) been mined?
+- [ ] **perf-25** (standard) — Is the methodology paper / write-up archived with the build?
+
+## Persona: strategy-architect
+_Quant or strategy author owning signal & expectancy design._
+
+- [ ] **strat-01** (critical) — Is the trading hypothesis stated in one sentence and falsifiable?
+- [ ] **strat-02** (critical) — Is sample size (trades) sufficient for the chosen expectancy claim?
+- [ ] **strat-03** (critical) — Does walk-forward IS/OOS correlation stay above 0.5?
+- [ ] **strat-04** (critical) — Does Monte-Carlo 95th-percentile DD respect the 1.5× tolerance?
+- [ ] **strat-05** (critical) — Is OOS/IS Sharpe ratio above the overfit threshold (≥ 0.7)?
+- [ ] **strat-06** (high) — Are entry and exit rules deterministic from inputs alone?
+- [ ] **strat-07** (high) — Has parameter sensitivity been characterised (cliff vs plateau)?
+- [ ] **strat-08** (high) — Is the optimization budget (passes) and selection rule documented?
+- [ ] **strat-09** (high) — Is data snooping bias controlled (held-out OOS window untouched)?
+- [ ] **strat-10** (high) — Is the regime (trend/range/news) the strategy targets explicit?
+- [ ] **strat-11** (high) — Does the strategy degrade gracefully outside its target regime?
+- [ ] **strat-12** (high) — Is the chosen fitness metric appropriate (Sharpe vs profit-DD)?
+- [ ] **strat-13** (standard) — Has feature-engineering / lookback been peer-reviewed?
+- [ ] **strat-14** (standard) — Is there a documented edge thesis (why this works, why now)?
+- [ ] **strat-15** (standard) — Are dependencies on broker-specific quirks minimised?
+- [ ] **strat-16** (standard) — Does the EA distinguish profit from luck via robustness metrics?
+- [ ] **strat-17** (standard) — Have correlated-signal redundancies been reduced?
+- [ ] **strat-18** (standard) — Is the cost model (spread + commission + swap) realistic?
+- [ ] **strat-19** (standard) — Does live-canary plan compare to backtest within tolerance?
+- [ ] **strat-20** (standard) — Is the rolling-window re-optimisation cadence documented?
+- [ ] **strat-21** (standard) — Are exits (take-profit vs trail vs time-stop) jointly evaluated?
+- [ ] **strat-22** (standard) — Have failure-mode strategies (kill-switch) been signal-tested?
+- [ ] **strat-23** (standard) — Is the published expectancy net of all known costs?
+- [ ] **strat-24** (standard) — Has fitness vs out-of-sample been visualised for selection bias?
+- [ ] **strat-25** (standard) — Are scientific notes (assumptions, observations) checked-in?
+
+## Step templates
+
+### scan
+
+# Step 1 / 8 — SCAN
+
+Identify the EA codebase shape and the friction points worth fixing.
+
+## Inputs
+- Repository checkout
+- Issue / motivation note (≤ 200 words)
+
+## Activities
+- [ ] List `.mq5` / `.mqh` files touched in the last 30 days
+- [ ] Run `mql5-lint` on the entry-point EA → capture WARN / ERROR counts
+- [ ] Read any prior `step-8-refine.md` to inherit context
+
+## Outputs
+- `step-1-scan.md` — pain-point catalogue, listed paths, lint baseline
+
+## Exit criteria
+- Pain points ranked by impact
+- Decision recorded: continue to RRI, or stop (no useful change to ship)
+
+> Sentinel: when this step is complete, `touch .rri-state/scan.done`.
+
+
+### rri
+
+# Step 2 / 8 — RRI (Requirements Matrix)
+
+Fill the Requirements / Risk / Intent matrix per chosen audit mode.
+
+## Inputs
+- `step-1-scan.md`
+- Audit mode: `{{mode}}` (personal / team / enterprise)
+
+## Activities
+- [ ] Run `python -m vibecodekit_mql5.rri.personas --mode <mode>`
+- [ ] Answer every question yielded by `iter_questions(mode)`
+- [ ] Tag any answer that introduces a constraint downstream (e.g. fitness goal)
+
+## Outputs
+- `step-2-rri.md` — answers per persona, with explicit constraints called out
+
+## Exit criteria
+- Question count equals the expected total (PERSONAL=30 / TEAM=72 / ENTERPRISE=150)
+- No constraint left as TODO
+
+> Sentinel: when this step is complete, `touch .rri-state/rri.done`.
+
+
+## Hypotheses
+
+- [ ] Hypothesis 1: ...
+- [ ] Hypothesis 2: ...

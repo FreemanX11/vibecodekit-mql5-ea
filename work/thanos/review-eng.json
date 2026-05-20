@@ -1,0 +1,117 @@
+# Engineering review
+
+## Persona: broker-engineer
+_Broker liquidity engineer evaluating execution & fill quality._
+
+- [ ] **broker-01** (critical) — Has the EA been verified across at least two broker digit classes?
+- [ ] **broker-02** (critical) — Is CPipNormalizer initialised before any OrderSend / SL math?
+- [ ] **broker-03** (critical) — Are fill policies (IOC / FOK / Return) chosen per broker capability?
+- [ ] **broker-04** (critical) — Are stops_level + freeze_level + step_volume respected per broker?
+- [ ] **broker-05** (critical) — Is the [PipNorm] log line emitted once per symbol per broker?
+- [ ] **broker-06** (high) — Has cross-broker stability been measured (PF CV, Sharpe stdev)?
+- [ ] **broker-07** (high) — Are slippage / requote rates within tolerance vs broker spec?
+- [ ] **broker-08** (high) — Has partial-fill behaviour been tested under low liquidity?
+- [ ] **broker-09** (high) — Does the magic-number range avoid broker-suite collisions?
+- [ ] **broker-10** (high) — Are netting vs hedging differences handled idiomatically?
+- [ ] **broker-11** (high) — Has commission / swap modeling been validated against statements?
+- [ ] **broker-12** (high) — Is symbol-suffix variability tolerated (EURUSD vs EURUSD.r)?
+- [ ] **broker-13** (standard) — Are order-modify retries bounded and outcome-asserted?
+- [ ] **broker-14** (standard) — Does ResultRetcode handling cover network and broker-side errors?
+- [ ] **broker-15** (standard) — Has tick-data fidelity been compared to broker live ticks?
+- [ ] **broker-16** (standard) — Is round-trip latency budgeted vs your fill-quality assumptions?
+- [ ] **broker-17** (standard) — Is the EA neutral to broker time zone (DST shifts)?
+- [ ] **broker-18** (standard) — Does the EA tolerate broker-side connection drops gracefully?
+- [ ] **broker-19** (standard) — Have execution metrics been captured for live-tuning purposes?
+- [ ] **broker-20** (standard) — Is the EA prepared for tick-volume vs real-volume differences?
+- [ ] **broker-21** (standard) — Does volume-based logic survive broker-specific contract sizes?
+- [ ] **broker-22** (standard) — Has SymbolInfoSessionTrade been used vs hardcoded session hours?
+- [ ] **broker-23** (standard) — Have multiple broker MT5 builds been smoke-tested against EA?
+- [ ] **broker-24** (standard) — Is the EA explicit about expected fill mode in journal?
+- [ ] **broker-25** (standard) — Are broker-side margin-stop policies considered for sizing?
+
+## Persona: devops
+_Deployment engineer running the EA on VPS / MetaQuotes hosting._
+
+- [ ] **dev-01** (critical) — Has the EA been validated on the target VPS image at least once?
+- [ ] **dev-02** (critical) — Is the deploy procedure documented in MIGRATE-VPS.md?
+- [ ] **dev-03** (critical) — Is journal output structured, parseable, and rotation-safe?
+- [ ] **dev-04** (critical) — Are MFE/MAE CSV traces written for every trade?
+- [ ] **dev-05** (critical) — Are restart, detach, and chart-change behaviours validated?
+- [ ] **dev-06** (high) — Is the rollback plan (stop EA, close positions, replace ex5) tested?
+- [ ] **dev-07** (high) — Is monitoring (uptime + heartbeat) wired to an alert channel?
+- [ ] **dev-08** (high) — Does OnInit/OnDeinit emit a clear lifecycle log entry?
+- [ ] **dev-09** (high) — Is the ex5 versioned (build hash in journal banner)?
+- [ ] **dev-10** (high) — Are inputs / .set files version-controlled and tagged with the build?
+- [ ] **dev-11** (high) — Is the EA tolerant to terminal restarts mid-position?
+- [ ] **dev-12** (high) — Is the deployment artifact reproducible from a git tag?
+- [ ] **dev-13** (standard) — Are external resources (WebRequest URLs) allow-listed in MT5?
+- [ ] **dev-14** (standard) — Is the canary plan (30-min observation) documented?
+- [ ] **dev-15** (standard) — Are log severities (info/warn/error) used consistently?
+- [ ] **dev-16** (standard) — Is the EA chart-template independent (works on any timeframe load)?
+- [ ] **dev-17** (standard) — Are MT5 file-resources cleaned on OnDeinit (no leaked handles)?
+- [ ] **dev-18** (standard) — Is timezone (server vs local vs broker) explicit in logs?
+- [ ] **dev-19** (standard) — Is the EA documented enough for a colleague to deploy without help?
+- [ ] **dev-20** (standard) — Has CPU / RAM footprint been measured under live tick rates?
+- [ ] **dev-21** (standard) — Is the disaster-recovery (DR) host pre-provisioned and tested?
+- [ ] **dev-22** (standard) — Does the EA degrade safely if the broker server is unreachable?
+- [ ] **dev-23** (standard) — Are secrets (broker login, API keys) kept outside the EA binary?
+- [ ] **dev-24** (standard) — Has the journal output been audited for PII / account leakage?
+- [ ] **dev-25** (standard) — Is on-call ownership (who responds to alerts) documented?
+
+## Step templates
+
+### build
+
+# Step 6 / 8 — BUILD
+
+Emit code from a scaffold plus targeted edits per the TIP.
+
+## Inputs
+- `step-5-tip.md`
+
+## Activities
+- [ ] `mql5-build <preset> --name ... --symbol ... --tf ...` (or extend existing)
+- [ ] Apply TIP module-by-module; commit small steps
+- [ ] Auto-include `CPipNormalizer.mqh` + `CMfeMaeLogger.mqh` if absent
+- [ ] Run `mql5-pip-normalize` to mop up any hard-coded pip math
+
+## Outputs
+- `step-6-build.md` — list of commits with their TIP item ids
+
+## Exit criteria
+- Build compiles (`mql5-compile` returns 0 errors)
+- All TIP items either implemented or explicitly deferred (with reason)
+
+> Sentinel: `touch .rri-state/build.done`.
+
+
+### verify
+
+# Step 7 / 8 — VERIFY
+
+Run every external gate the kit ships and capture the artefacts.
+
+## Inputs
+- `step-6-build.md`
+- Demo broker credentials (multi-broker step)
+
+## Activities
+- [ ] `mql5-lint` — 8 critical AP must pass
+- [ ] `mql5-compile` — 0 errors required (warnings allowed)
+- [ ] `mql5-backtest` — produce tester XML
+- [ ] `mql5-walkforward` — IS/OOS correlation ≥ 0.5
+- [ ] `mql5-monte-carlo` — 95th-pct DD ≤ 1.5× reported
+- [ ] `mql5-overfit-check` — OOS/IS Sharpe ratio ≥ 0.7
+- [ ] `mql5-multibroker` — protocol B-1/B-2/B-3 pass
+- [ ] `mql5-trader-check` — ≥ 15/17 personal, 17/17 enterprise
+- [ ] `mql5-rri-bt` — backtest review with 5 personas
+
+## Outputs
+- `step-7-verify.md` — pass/fail per gate, links to artefact files
+
+## Exit criteria
+- Every required gate green
+- 64-cell matrix ≥ 56 PASS (enterprise)
+
+> Sentinel: `touch .rri-state/verify.done`.
+

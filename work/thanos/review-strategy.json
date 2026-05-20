@@ -1,0 +1,61 @@
+# Review — persona: strategy-architect / step: verify / mode: enterprise
+
+_Quant or strategy author owning signal & expectancy design._
+
+## Questions
+
+- [ ] **strat-01** (critical) — Is the trading hypothesis stated in one sentence and falsifiable?
+- [ ] **strat-02** (critical) — Is sample size (trades) sufficient for the chosen expectancy claim?
+- [ ] **strat-03** (critical) — Does walk-forward IS/OOS correlation stay above 0.5?
+- [ ] **strat-04** (critical) — Does Monte-Carlo 95th-percentile DD respect the 1.5× tolerance?
+- [ ] **strat-05** (critical) — Is OOS/IS Sharpe ratio above the overfit threshold (≥ 0.7)?
+- [ ] **strat-06** (high) — Are entry and exit rules deterministic from inputs alone?
+- [ ] **strat-07** (high) — Has parameter sensitivity been characterised (cliff vs plateau)?
+- [ ] **strat-08** (high) — Is the optimization budget (passes) and selection rule documented?
+- [ ] **strat-09** (high) — Is data snooping bias controlled (held-out OOS window untouched)?
+- [ ] **strat-10** (high) — Is the regime (trend/range/news) the strategy targets explicit?
+- [ ] **strat-11** (high) — Does the strategy degrade gracefully outside its target regime?
+- [ ] **strat-12** (high) — Is the chosen fitness metric appropriate (Sharpe vs profit-DD)?
+- [ ] **strat-13** (standard) — Has feature-engineering / lookback been peer-reviewed?
+- [ ] **strat-14** (standard) — Is there a documented edge thesis (why this works, why now)?
+- [ ] **strat-15** (standard) — Are dependencies on broker-specific quirks minimised?
+- [ ] **strat-16** (standard) — Does the EA distinguish profit from luck via robustness metrics?
+- [ ] **strat-17** (standard) — Have correlated-signal redundancies been reduced?
+- [ ] **strat-18** (standard) — Is the cost model (spread + commission + swap) realistic?
+- [ ] **strat-19** (standard) — Does live-canary plan compare to backtest within tolerance?
+- [ ] **strat-20** (standard) — Is the rolling-window re-optimisation cadence documented?
+- [ ] **strat-21** (standard) — Are exits (take-profit vs trail vs time-stop) jointly evaluated?
+- [ ] **strat-22** (standard) — Have failure-mode strategies (kill-switch) been signal-tested?
+- [ ] **strat-23** (standard) — Is the published expectancy net of all known costs?
+- [ ] **strat-24** (standard) — Has fitness vs out-of-sample been visualised for selection bias?
+- [ ] **strat-25** (standard) — Are scientific notes (assumptions, observations) checked-in?
+
+## Step template
+
+# Step 7 / 8 — VERIFY
+
+Run every external gate the kit ships and capture the artefacts.
+
+## Inputs
+- `step-6-build.md`
+- Demo broker credentials (multi-broker step)
+
+## Activities
+- [ ] `mql5-lint` — 8 critical AP must pass
+- [ ] `mql5-compile` — 0 errors required (warnings allowed)
+- [ ] `mql5-backtest` — produce tester XML
+- [ ] `mql5-walkforward` — IS/OOS correlation ≥ 0.5
+- [ ] `mql5-monte-carlo` — 95th-pct DD ≤ 1.5× reported
+- [ ] `mql5-overfit-check` — OOS/IS Sharpe ratio ≥ 0.7
+- [ ] `mql5-multibroker` — protocol B-1/B-2/B-3 pass
+- [ ] `mql5-trader-check` — ≥ 15/17 personal, 17/17 enterprise
+- [ ] `mql5-rri-bt` — backtest review with 5 personas
+
+## Outputs
+- `step-7-verify.md` — pass/fail per gate, links to artefact files
+
+## Exit criteria
+- Every required gate green
+- 64-cell matrix ≥ 56 PASS (enterprise)
+
+> Sentinel: `touch .rri-state/verify.done`.

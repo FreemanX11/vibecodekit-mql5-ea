@@ -1,0 +1,61 @@
+# Review — persona: trader / step: verify / mode: enterprise
+
+_End-user trader running the EA on a live or demo account._
+
+## Questions
+
+- [ ] **trader-01** (critical) — What is the maximum acceptable drawdown for this strategy?
+- [ ] **trader-02** (critical) — What instruments and timeframes is this EA approved to trade?
+- [ ] **trader-03** (critical) — What is the per-trade risk percentage and how is it enforced?
+- [ ] **trader-04** (critical) — Is there a daily-loss kill switch and when does it fire?
+- [ ] **trader-05** (critical) — Does the EA respect news windows / session boundaries?
+- [ ] **trader-06** (high) — How will I know the EA is functioning (journal cues, dashboard, alerts)?
+- [ ] **trader-07** (high) — What happens to open positions if the EA is detached or restarts?
+- [ ] **trader-08** (high) — Is there a manual override and how do I trigger it safely?
+- [ ] **trader-09** (high) — What is the expected number of trades per day / week?
+- [ ] **trader-10** (high) — What spread / commission environment is the strategy tuned for?
+- [ ] **trader-11** (high) — How is leverage selected and constrained?
+- [ ] **trader-12** (high) — Does the EA handle weekend gap risk explicitly?
+- [ ] **trader-13** (standard) — What evidence supports the claimed expectancy (sample size, time span)?
+- [ ] **trader-14** (standard) — How are losing streaks bounded behaviourally (rule, not feeling)?
+- [ ] **trader-15** (standard) — What is the worst historical drawdown sequence and recovery time?
+- [ ] **trader-16** (standard) — Are trade reasons logged in a human-readable form?
+- [ ] **trader-17** (standard) — What is the rollback procedure if a release misbehaves?
+- [ ] **trader-18** (standard) — How is performance reported back to me (daily, weekly, ad-hoc)?
+- [ ] **trader-19** (standard) — What's the policy if a broker changes execution rules mid-run?
+- [ ] **trader-20** (standard) — Are my expectations on uptime aligned with the chosen hosting?
+- [ ] **trader-21** (standard) — How is success/failure of a trade communicated post-mortem?
+- [ ] **trader-22** (standard) — What position sizing rule applies for compounding vs fixed?
+- [ ] **trader-23** (standard) — Are entry/exit signals deterministic given identical input bars?
+- [ ] **trader-24** (standard) — Have I personally validated the EA on demo for at least 2 weeks?
+- [ ] **trader-25** (standard) — Do I understand all configurable inputs and their failure modes?
+
+## Step template
+
+# Step 7 / 8 — VERIFY
+
+Run every external gate the kit ships and capture the artefacts.
+
+## Inputs
+- `step-6-build.md`
+- Demo broker credentials (multi-broker step)
+
+## Activities
+- [ ] `mql5-lint` — 8 critical AP must pass
+- [ ] `mql5-compile` — 0 errors required (warnings allowed)
+- [ ] `mql5-backtest` — produce tester XML
+- [ ] `mql5-walkforward` — IS/OOS correlation ≥ 0.5
+- [ ] `mql5-monte-carlo` — 95th-pct DD ≤ 1.5× reported
+- [ ] `mql5-overfit-check` — OOS/IS Sharpe ratio ≥ 0.7
+- [ ] `mql5-multibroker` — protocol B-1/B-2/B-3 pass
+- [ ] `mql5-trader-check` — ≥ 15/17 personal, 17/17 enterprise
+- [ ] `mql5-rri-bt` — backtest review with 5 personas
+
+## Outputs
+- `step-7-verify.md` — pass/fail per gate, links to artefact files
+
+## Exit criteria
+- Every required gate green
+- 64-cell matrix ≥ 56 PASS (enterprise)
+
+> Sentinel: `touch .rri-state/verify.done`.

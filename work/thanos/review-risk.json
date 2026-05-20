@@ -1,0 +1,61 @@
+# Review — persona: risk-auditor / step: verify / mode: enterprise
+
+_Risk officer signing off on the EA's exposure envelope._
+
+## Questions
+
+- [ ] **risk-01** (critical) — Is the daily-loss cap implemented in code and journal-verifiable?
+- [ ] **risk-02** (critical) — Does every OrderSend ship with a stop-loss attached (AP-1 check)?
+- [ ] **risk-03** (critical) — Is position sizing risk-based via CPipNormalizer.LotForRisk?
+- [ ] **risk-04** (critical) — Is maximum concurrent exposure (notional + margin) bounded?
+- [ ] **risk-05** (critical) — Are stress-scenario losses (gap, flash-crash) inside tolerance?
+- [ ] **risk-06** (high) — Is VaR / Expected Shortfall computed against backtest equity?
+- [ ] **risk-07** (high) — Is the spread guard (AP-8) wired and threshold journal-logged?
+- [ ] **risk-08** (high) — Is correlation across simultaneously-open positions bounded?
+- [ ] **risk-09** (high) — Is the freeze-on-drawdown guard documented and tested?
+- [ ] **risk-10** (high) — Does the EA reject trades when broker-side stops_level is violated?
+- [ ] **risk-11** (high) — Are martingale / grid behaviours explicitly bounded (AP-4)?
+- [ ] **risk-12** (high) — Is the leverage limit aligned with broker margin tiers?
+- [ ] **risk-13** (standard) — Are stop-loss distances validated against ATR / volatility regime?
+- [ ] **risk-14** (standard) — Is sequence-of-losses risk (kelly fraction cap) considered?
+- [ ] **risk-15** (standard) — Does the EA handle requote / slippage without doubling exposure?
+- [ ] **risk-16** (standard) — Are open positions reconciled with the journal on restart?
+- [ ] **risk-17** (standard) — Is the worst-case latency budget priced into stop placement?
+- [ ] **risk-18** (standard) — Are dependencies (DLL, WebRequest) failure-modes risk-classed?
+- [ ] **risk-19** (standard) — Is there a documented kill-list of conditions that disable trading?
+- [ ] **risk-20** (standard) — How is overnight / swap-day exposure handled?
+- [ ] **risk-21** (standard) — Does the EA respect a regulatory leverage cap when present?
+- [ ] **risk-22** (standard) — Is broker risk (default, insolvency) part of the runtime envelope?
+- [ ] **risk-23** (standard) — Is post-mortem template defined for stop-loss / margin-call events?
+- [ ] **risk-24** (standard) — Are inputs that change risk envelope flagged require-restart?
+- [ ] **risk-25** (standard) — Has a sign-off matrix (who approves what) been formalised?
+
+## Step template
+
+# Step 7 / 8 — VERIFY
+
+Run every external gate the kit ships and capture the artefacts.
+
+## Inputs
+- `step-6-build.md`
+- Demo broker credentials (multi-broker step)
+
+## Activities
+- [ ] `mql5-lint` — 8 critical AP must pass
+- [ ] `mql5-compile` — 0 errors required (warnings allowed)
+- [ ] `mql5-backtest` — produce tester XML
+- [ ] `mql5-walkforward` — IS/OOS correlation ≥ 0.5
+- [ ] `mql5-monte-carlo` — 95th-pct DD ≤ 1.5× reported
+- [ ] `mql5-overfit-check` — OOS/IS Sharpe ratio ≥ 0.7
+- [ ] `mql5-multibroker` — protocol B-1/B-2/B-3 pass
+- [ ] `mql5-trader-check` — ≥ 15/17 personal, 17/17 enterprise
+- [ ] `mql5-rri-bt` — backtest review with 5 personas
+
+## Outputs
+- `step-7-verify.md` — pass/fail per gate, links to artefact files
+
+## Exit criteria
+- Every required gate green
+- 64-cell matrix ≥ 56 PASS (enterprise)
+
+> Sentinel: `touch .rri-state/verify.done`.

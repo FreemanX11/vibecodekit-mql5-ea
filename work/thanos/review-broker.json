@@ -1,0 +1,61 @@
+# Review — persona: broker-engineer / step: verify / mode: enterprise
+
+_Broker liquidity engineer evaluating execution & fill quality._
+
+## Questions
+
+- [ ] **broker-01** (critical) — Has the EA been verified across at least two broker digit classes?
+- [ ] **broker-02** (critical) — Is CPipNormalizer initialised before any OrderSend / SL math?
+- [ ] **broker-03** (critical) — Are fill policies (IOC / FOK / Return) chosen per broker capability?
+- [ ] **broker-04** (critical) — Are stops_level + freeze_level + step_volume respected per broker?
+- [ ] **broker-05** (critical) — Is the [PipNorm] log line emitted once per symbol per broker?
+- [ ] **broker-06** (high) — Has cross-broker stability been measured (PF CV, Sharpe stdev)?
+- [ ] **broker-07** (high) — Are slippage / requote rates within tolerance vs broker spec?
+- [ ] **broker-08** (high) — Has partial-fill behaviour been tested under low liquidity?
+- [ ] **broker-09** (high) — Does the magic-number range avoid broker-suite collisions?
+- [ ] **broker-10** (high) — Are netting vs hedging differences handled idiomatically?
+- [ ] **broker-11** (high) — Has commission / swap modeling been validated against statements?
+- [ ] **broker-12** (high) — Is symbol-suffix variability tolerated (EURUSD vs EURUSD.r)?
+- [ ] **broker-13** (standard) — Are order-modify retries bounded and outcome-asserted?
+- [ ] **broker-14** (standard) — Does ResultRetcode handling cover network and broker-side errors?
+- [ ] **broker-15** (standard) — Has tick-data fidelity been compared to broker live ticks?
+- [ ] **broker-16** (standard) — Is round-trip latency budgeted vs your fill-quality assumptions?
+- [ ] **broker-17** (standard) — Is the EA neutral to broker time zone (DST shifts)?
+- [ ] **broker-18** (standard) — Does the EA tolerate broker-side connection drops gracefully?
+- [ ] **broker-19** (standard) — Have execution metrics been captured for live-tuning purposes?
+- [ ] **broker-20** (standard) — Is the EA prepared for tick-volume vs real-volume differences?
+- [ ] **broker-21** (standard) — Does volume-based logic survive broker-specific contract sizes?
+- [ ] **broker-22** (standard) — Has SymbolInfoSessionTrade been used vs hardcoded session hours?
+- [ ] **broker-23** (standard) — Have multiple broker MT5 builds been smoke-tested against EA?
+- [ ] **broker-24** (standard) — Is the EA explicit about expected fill mode in journal?
+- [ ] **broker-25** (standard) — Are broker-side margin-stop policies considered for sizing?
+
+## Step template
+
+# Step 7 / 8 — VERIFY
+
+Run every external gate the kit ships and capture the artefacts.
+
+## Inputs
+- `step-6-build.md`
+- Demo broker credentials (multi-broker step)
+
+## Activities
+- [ ] `mql5-lint` — 8 critical AP must pass
+- [ ] `mql5-compile` — 0 errors required (warnings allowed)
+- [ ] `mql5-backtest` — produce tester XML
+- [ ] `mql5-walkforward` — IS/OOS correlation ≥ 0.5
+- [ ] `mql5-monte-carlo` — 95th-pct DD ≤ 1.5× reported
+- [ ] `mql5-overfit-check` — OOS/IS Sharpe ratio ≥ 0.7
+- [ ] `mql5-multibroker` — protocol B-1/B-2/B-3 pass
+- [ ] `mql5-trader-check` — ≥ 15/17 personal, 17/17 enterprise
+- [ ] `mql5-rri-bt` — backtest review with 5 personas
+
+## Outputs
+- `step-7-verify.md` — pass/fail per gate, links to artefact files
+
+## Exit criteria
+- Every required gate green
+- 64-cell matrix ≥ 56 PASS (enterprise)
+
+> Sentinel: `touch .rri-state/verify.done`.

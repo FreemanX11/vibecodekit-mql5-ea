@@ -1,0 +1,61 @@
+# Review — persona: devops / step: verify / mode: enterprise
+
+_Deployment engineer running the EA on VPS / MetaQuotes hosting._
+
+## Questions
+
+- [ ] **dev-01** (critical) — Has the EA been validated on the target VPS image at least once?
+- [ ] **dev-02** (critical) — Is the deploy procedure documented in MIGRATE-VPS.md?
+- [ ] **dev-03** (critical) — Is journal output structured, parseable, and rotation-safe?
+- [ ] **dev-04** (critical) — Are MFE/MAE CSV traces written for every trade?
+- [ ] **dev-05** (critical) — Are restart, detach, and chart-change behaviours validated?
+- [ ] **dev-06** (high) — Is the rollback plan (stop EA, close positions, replace ex5) tested?
+- [ ] **dev-07** (high) — Is monitoring (uptime + heartbeat) wired to an alert channel?
+- [ ] **dev-08** (high) — Does OnInit/OnDeinit emit a clear lifecycle log entry?
+- [ ] **dev-09** (high) — Is the ex5 versioned (build hash in journal banner)?
+- [ ] **dev-10** (high) — Are inputs / .set files version-controlled and tagged with the build?
+- [ ] **dev-11** (high) — Is the EA tolerant to terminal restarts mid-position?
+- [ ] **dev-12** (high) — Is the deployment artifact reproducible from a git tag?
+- [ ] **dev-13** (standard) — Are external resources (WebRequest URLs) allow-listed in MT5?
+- [ ] **dev-14** (standard) — Is the canary plan (30-min observation) documented?
+- [ ] **dev-15** (standard) — Are log severities (info/warn/error) used consistently?
+- [ ] **dev-16** (standard) — Is the EA chart-template independent (works on any timeframe load)?
+- [ ] **dev-17** (standard) — Are MT5 file-resources cleaned on OnDeinit (no leaked handles)?
+- [ ] **dev-18** (standard) — Is timezone (server vs local vs broker) explicit in logs?
+- [ ] **dev-19** (standard) — Is the EA documented enough for a colleague to deploy without help?
+- [ ] **dev-20** (standard) — Has CPU / RAM footprint been measured under live tick rates?
+- [ ] **dev-21** (standard) — Is the disaster-recovery (DR) host pre-provisioned and tested?
+- [ ] **dev-22** (standard) — Does the EA degrade safely if the broker server is unreachable?
+- [ ] **dev-23** (standard) — Are secrets (broker login, API keys) kept outside the EA binary?
+- [ ] **dev-24** (standard) — Has the journal output been audited for PII / account leakage?
+- [ ] **dev-25** (standard) — Is on-call ownership (who responds to alerts) documented?
+
+## Step template
+
+# Step 7 / 8 — VERIFY
+
+Run every external gate the kit ships and capture the artefacts.
+
+## Inputs
+- `step-6-build.md`
+- Demo broker credentials (multi-broker step)
+
+## Activities
+- [ ] `mql5-lint` — 8 critical AP must pass
+- [ ] `mql5-compile` — 0 errors required (warnings allowed)
+- [ ] `mql5-backtest` — produce tester XML
+- [ ] `mql5-walkforward` — IS/OOS correlation ≥ 0.5
+- [ ] `mql5-monte-carlo` — 95th-pct DD ≤ 1.5× reported
+- [ ] `mql5-overfit-check` — OOS/IS Sharpe ratio ≥ 0.7
+- [ ] `mql5-multibroker` — protocol B-1/B-2/B-3 pass
+- [ ] `mql5-trader-check` — ≥ 15/17 personal, 17/17 enterprise
+- [ ] `mql5-rri-bt` — backtest review with 5 personas
+
+## Outputs
+- `step-7-verify.md` — pass/fail per gate, links to artefact files
+
+## Exit criteria
+- Every required gate green
+- 64-cell matrix ≥ 56 PASS (enterprise)
+
+> Sentinel: `touch .rri-state/verify.done`.

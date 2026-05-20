@@ -1,0 +1,61 @@
+# Review — persona: perf-analyst / step: verify / mode: enterprise
+
+_Backtest analyst evaluating tester reports and optimiser output._
+
+## Questions
+
+- [ ] **perf-01** (critical) — Is the tester report (XML) parsed end-to-end without warnings?
+- [ ] **perf-02** (critical) — Is profit factor (PF) above the personal-mode minimum (≥ 1.3)?
+- [ ] **perf-03** (critical) — Is Sharpe ratio above the personal-mode minimum (≥ 0.5)?
+- [ ] **perf-04** (critical) — Is max relative drawdown within the strategy's stated limit?
+- [ ] **perf-05** (critical) — Is trade-count sample size ≥ 100 in the IS window?
+- [ ] **perf-06** (high) — Is recovery factor (RF = profit / DD) acceptable for risk taken?
+- [ ] **perf-07** (high) — Have winning / losing streak distributions been characterised?
+- [ ] **perf-08** (high) — Are MFE / MAE distributions plotted and reviewed?
+- [ ] **perf-09** (high) — Has the tester data quality (gaps, spread) been audited?
+- [ ] **perf-10** (high) — Is the modelling mode (every-tick vs control) appropriate?
+- [ ] **perf-11** (high) — Has the optimisation criterion produced a smooth landscape?
+- [ ] **perf-12** (high) — Are robustness checks (perturbation of parameters) acceptable?
+- [ ] **perf-13** (standard) — Is the AHPR / GHPR consistent across the optimisation cloud?
+- [ ] **perf-14** (standard) — Is the equity curve free of pathological flat / spike behaviour?
+- [ ] **perf-15** (standard) — Has MFE/MAE correlation been compared across regimes?
+- [ ] **perf-16** (standard) — Are tester slippage / latency assumptions explicit?
+- [ ] **perf-17** (standard) — Has the EP (expected payoff) been compared to live canary?
+- [ ] **perf-18** (standard) — Have outlier trades been audited for data / logic artefacts?
+- [ ] **perf-19** (standard) — Is the tester input-set version-controlled with the .ex5?
+- [ ] **perf-20** (standard) — Have multi-period rolling tests been compared for stability?
+- [ ] **perf-21** (standard) — Is the histogram of trade R-multiples documented?
+- [ ] **perf-22** (standard) — Has selection bias (best-pass picking) been documented and avoided?
+- [ ] **perf-23** (standard) — Are trade-by-trade journals stored for off-line analysis?
+- [ ] **perf-24** (standard) — Have execution-side metrics (slippage, requote) been mined?
+- [ ] **perf-25** (standard) — Is the methodology paper / write-up archived with the build?
+
+## Step template
+
+# Step 7 / 8 — VERIFY
+
+Run every external gate the kit ships and capture the artefacts.
+
+## Inputs
+- `step-6-build.md`
+- Demo broker credentials (multi-broker step)
+
+## Activities
+- [ ] `mql5-lint` — 8 critical AP must pass
+- [ ] `mql5-compile` — 0 errors required (warnings allowed)
+- [ ] `mql5-backtest` — produce tester XML
+- [ ] `mql5-walkforward` — IS/OOS correlation ≥ 0.5
+- [ ] `mql5-monte-carlo` — 95th-pct DD ≤ 1.5× reported
+- [ ] `mql5-overfit-check` — OOS/IS Sharpe ratio ≥ 0.7
+- [ ] `mql5-multibroker` — protocol B-1/B-2/B-3 pass
+- [ ] `mql5-trader-check` — ≥ 15/17 personal, 17/17 enterprise
+- [ ] `mql5-rri-bt` — backtest review with 5 personas
+
+## Outputs
+- `step-7-verify.md` — pass/fail per gate, links to artefact files
+
+## Exit criteria
+- Every required gate green
+- 64-cell matrix ≥ 56 PASS (enterprise)
+
+> Sentinel: `touch .rri-state/verify.done`.

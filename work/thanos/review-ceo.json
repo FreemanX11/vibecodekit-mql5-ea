@@ -1,0 +1,112 @@
+# CEO review
+
+## Persona: trader
+_End-user trader running the EA on a live or demo account._
+
+- [ ] **trader-01** (critical) — What is the maximum acceptable drawdown for this strategy?
+- [ ] **trader-02** (critical) — What instruments and timeframes is this EA approved to trade?
+- [ ] **trader-03** (critical) — What is the per-trade risk percentage and how is it enforced?
+- [ ] **trader-04** (critical) — Is there a daily-loss kill switch and when does it fire?
+- [ ] **trader-05** (critical) — Does the EA respect news windows / session boundaries?
+- [ ] **trader-06** (high) — How will I know the EA is functioning (journal cues, dashboard, alerts)?
+- [ ] **trader-07** (high) — What happens to open positions if the EA is detached or restarts?
+- [ ] **trader-08** (high) — Is there a manual override and how do I trigger it safely?
+- [ ] **trader-09** (high) — What is the expected number of trades per day / week?
+- [ ] **trader-10** (high) — What spread / commission environment is the strategy tuned for?
+- [ ] **trader-11** (high) — How is leverage selected and constrained?
+- [ ] **trader-12** (high) — Does the EA handle weekend gap risk explicitly?
+- [ ] **trader-13** (standard) — What evidence supports the claimed expectancy (sample size, time span)?
+- [ ] **trader-14** (standard) — How are losing streaks bounded behaviourally (rule, not feeling)?
+- [ ] **trader-15** (standard) — What is the worst historical drawdown sequence and recovery time?
+- [ ] **trader-16** (standard) — Are trade reasons logged in a human-readable form?
+- [ ] **trader-17** (standard) — What is the rollback procedure if a release misbehaves?
+- [ ] **trader-18** (standard) — How is performance reported back to me (daily, weekly, ad-hoc)?
+- [ ] **trader-19** (standard) — What's the policy if a broker changes execution rules mid-run?
+- [ ] **trader-20** (standard) — Are my expectations on uptime aligned with the chosen hosting?
+- [ ] **trader-21** (standard) — How is success/failure of a trade communicated post-mortem?
+- [ ] **trader-22** (standard) — What position sizing rule applies for compounding vs fixed?
+- [ ] **trader-23** (standard) — Are entry/exit signals deterministic given identical input bars?
+- [ ] **trader-24** (standard) — Have I personally validated the EA on demo for at least 2 weeks?
+- [ ] **trader-25** (standard) — Do I understand all configurable inputs and their failure modes?
+
+## Persona: strategy-architect
+_Quant or strategy author owning signal & expectancy design._
+
+- [ ] **strat-01** (critical) — Is the trading hypothesis stated in one sentence and falsifiable?
+- [ ] **strat-02** (critical) — Is sample size (trades) sufficient for the chosen expectancy claim?
+- [ ] **strat-03** (critical) — Does walk-forward IS/OOS correlation stay above 0.5?
+- [ ] **strat-04** (critical) — Does Monte-Carlo 95th-percentile DD respect the 1.5× tolerance?
+- [ ] **strat-05** (critical) — Is OOS/IS Sharpe ratio above the overfit threshold (≥ 0.7)?
+- [ ] **strat-06** (high) — Are entry and exit rules deterministic from inputs alone?
+- [ ] **strat-07** (high) — Has parameter sensitivity been characterised (cliff vs plateau)?
+- [ ] **strat-08** (high) — Is the optimization budget (passes) and selection rule documented?
+- [ ] **strat-09** (high) — Is data snooping bias controlled (held-out OOS window untouched)?
+- [ ] **strat-10** (high) — Is the regime (trend/range/news) the strategy targets explicit?
+- [ ] **strat-11** (high) — Does the strategy degrade gracefully outside its target regime?
+- [ ] **strat-12** (high) — Is the chosen fitness metric appropriate (Sharpe vs profit-DD)?
+- [ ] **strat-13** (standard) — Has feature-engineering / lookback been peer-reviewed?
+- [ ] **strat-14** (standard) — Is there a documented edge thesis (why this works, why now)?
+- [ ] **strat-15** (standard) — Are dependencies on broker-specific quirks minimised?
+- [ ] **strat-16** (standard) — Does the EA distinguish profit from luck via robustness metrics?
+- [ ] **strat-17** (standard) — Have correlated-signal redundancies been reduced?
+- [ ] **strat-18** (standard) — Is the cost model (spread + commission + swap) realistic?
+- [ ] **strat-19** (standard) — Does live-canary plan compare to backtest within tolerance?
+- [ ] **strat-20** (standard) — Is the rolling-window re-optimisation cadence documented?
+- [ ] **strat-21** (standard) — Are exits (take-profit vs trail vs time-stop) jointly evaluated?
+- [ ] **strat-22** (standard) — Have failure-mode strategies (kill-switch) been signal-tested?
+- [ ] **strat-23** (standard) — Is the published expectancy net of all known costs?
+- [ ] **strat-24** (standard) — Has fitness vs out-of-sample been visualised for selection bias?
+- [ ] **strat-25** (standard) — Are scientific notes (assumptions, observations) checked-in?
+
+## Step templates
+
+### vision
+
+# Step 3 / 8 — VISION (Contractor proposal)
+
+Translate the RRI matrix into a scope + cost + timeline + risk register.
+
+## Inputs
+- `step-2-rri.md`
+
+## Activities
+- [ ] Define the minimum viable change set (files in, files out)
+- [ ] Estimate effort by file (S/M/L)
+- [ ] Enumerate risks; assign owner + mitigation
+
+## Outputs
+- `step-3-vision.md` — scope, timeline, risk register
+
+## Exit criteria
+- Scope is acceptable to all RRI personas active in the chosen mode
+- Risks above the personal-mode acceptance bar have explicit mitigations
+
+> Sentinel: `touch .rri-state/vision.done`.
+
+
+### refine
+
+# Step 8 / 8 — REFINE
+
+Classify the delivered change against the v5 refine envelope and decide
+whether to ship, loop back to RRI, or escalate.
+
+## Inputs
+- `step-7-verify.md`
+- Live canary observation (if applicable)
+
+## Activities
+- [ ] Diff scope vs `step-3-vision.md` — are we still inside the envelope?
+- [ ] Capture any new pain points → seeds for next SCAN
+- [ ] If a gate failed: decide repair vs roll-back; document why
+
+## Outputs
+- `step-8-refine.md` — verdict (SHIP / LOOP-TO-RRI / ESCALATE), follow-up items
+
+## Exit criteria
+- Verdict recorded
+- If SHIP: `mql5-deploy-vps` invoked + MIGRATE-VPS.md produced
+- If LOOP-TO-RRI: open a new ticket pointing back to step 2
+
+> Sentinel: `touch .rri-state/refine.done`.
+
