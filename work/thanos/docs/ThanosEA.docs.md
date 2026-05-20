@@ -1,14 +1,12 @@
 ---
 ea_name: ThanosEA
-ea_version: 2.0.0
+ea_version: 0.1.0
 kit_version: 1.0.1
-built_at: 2026-05-20T19:46:41Z
+built_at: 2026-05-20T20:58:02Z
 built_from: work/thanos/ea-spec.yaml
 symbol: EURUSD
 timeframe: H1
 mode: enterprise
-compile: PASS (.ex5)
-gate: enterprise: lint=0 errors
 ---
 
 # ThanosEA
@@ -37,33 +35,24 @@ Quét → Soạn → Kiểm → **Phát hành**
 | - | `AllowBuy` | `bool` | `true` |  |
 | - | `AllowSell` | `bool` | `true` |  |
 | - | `EAMakesFirstOrder` | `bool` | `true` |  |
-| - | `OpenOrderOnTrend` | `bool` | `false` |  |
-| - | `FirstStepPips` | `int` | `10` |  |
-| - | `MinPriceDistancePips` | `int` | `30` |  |
-| - | `MoveStepPips` | `int` | `5` |  |
-| - | `DistBetweenOrdersPips` | `int` | `30` |  |
-| - | `StartLot` | `double` | `0.1` |  |
-| - | `LotIncrement` | `double` | `0.0` |  |
-| - | `LotMultiplier` | `double` | `1.5` |  |
+| - | `EmaPeriod` | `int` | `20` |  |
+| - | `EmaRangePips` | `int` | `3000` |  |
+| - | `EmaTimeframe` | `ENUM_TIMEFRAMES` | `PERIOD_CURRENT` |  |
+| - | `DcaStepPips` | `int` | `30` |  |
+| - | `StartLot` | `double` | `0.01` |  |
+| - | `LotMultiplier` | `double` | `1.4` |  |
 | - | `LotDecimalPlaces` | `int` | `2` |  |
-| - | `MaxAllowedLoss` | `double` | `100000.0` |  |
-| - | `CloseLossByDrawdown` | `double` | `10.0` |  |
-| - | `ProfitCloseAllDirections` | `double` | `10.0` |  |
-| - | `ProfitCloseOneDirection` | `double` | `50.0` |  |
-| - | `AutoCalcProfitMultiplier` | `int` | `50` |  |
-| - | `LossCloseThreshold` | `double` | `100000.0` |  |
-| - | `TrailingType` | `int` | `1` |  |
+| - | `TpFromBEPips` | `int` | `20` |  |
+| - | `CloseAllProfit` | `double` | `10.0` |  |
+| - | `DailyTpTarget` | `double` | `50.0` |  |
+| - | `EnableTrimFarthest` | `bool` | `true` |  |
+| - | `EnableTrimMostLoss` | `bool` | `true` |  |
+| - | `TrimTpPips` | `int` | `1000` |  |
+| - | `TrailingType` | `int` | `0` |  |
 | - | `TrailingStepPips` | `int` | `0` |  |
 | - | `MinTrailingProfit` | `int` | `10` |  |
 | - | `TrailingPadding` | `int` | `0` |  |
 | - | `TrailingTimeframe` | `int` | `15` |  |
-| - | `StoplossPips` | `int` | `0` |  |
-| - | `TakeprofitPips` | `int` | `0` |  |
-| - | `UseRSIFilter` | `bool` | `false` |  |
-| - | `RSIOversold` | `int` | `15` |  |
-| - | `RSIOverbought` | `int` | `85` |  |
-| - | `RSIPeriod` | `int` | `5` |  |
-| - | `RSITimeframe` | `int` | `0` |  |
 | - | `DeleteOrdersAtHour` | `bool` | `true` |  |
 | - | `DeleteHour` | `int` | `20` |  |
 | - | `StartHour` | `int` | `0` |  |
