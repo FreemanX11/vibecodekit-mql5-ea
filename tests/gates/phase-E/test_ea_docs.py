@@ -249,6 +249,45 @@ def test_render_markdown_uses_english_labels_when_lang_en() -> None:
     assert "`InpRiskPct`" in md
 
 
+def test_render_markdown_severity_prefix_localized_to_english_when_lang_en() -> None:
+    """PR-18.4 regression: the take-note severity prefix must follow
+    ``lang``. Previously (PR-18.3) the prefix was hard-coded to the
+    Vietnamese labels ``[Lưu ý] / [Cảnh báo] / [Nguy hiểm]`` and leaked
+    into the EN markdown alongside otherwise-English note titles and
+    bodies."""
+    md_en = render_markdown(
+        build_doc_content(_full_spec(), _MQ5_SAMPLE, _build_meta(), lang="en")
+    )
+    # At least one English severity tag must show up.
+    assert (
+        "[Note]" in md_en
+        or "[Warning]" in md_en
+        or "[Danger]" in md_en
+    ), "EN markdown must use English severity tags"
+    # Vietnamese tags must NOT appear in the EN output.
+    for vi_tag in ("[Lưu ý]", "[Cảnh báo]", "[Nguy hiểm]"):
+        assert vi_tag not in md_en, (
+            f"Vietnamese severity tag {vi_tag!r} leaked into EN markdown"
+        )
+
+
+def test_render_markdown_severity_prefix_localized_to_vietnamese_by_default() -> None:
+    """Companion of the EN test: the default (VN) markdown must use the
+    Vietnamese severity tags and must NOT leak English tags."""
+    md_vi = render_markdown(
+        build_doc_content(_full_spec(), _MQ5_SAMPLE, _build_meta())
+    )
+    assert (
+        "[Lưu ý]" in md_vi
+        or "[Cảnh báo]" in md_vi
+        or "[Nguy hiểm]" in md_vi
+    ), "VN markdown must use Vietnamese severity tags"
+    for en_tag in ("[Note]", "[Warning]", "[Danger]"):
+        assert en_tag not in md_vi, (
+            f"English severity tag {en_tag!r} leaked into VN markdown"
+        )
+
+
 def test_render_markdown_contains_no_japanese_decorative_text() -> None:
     """PR-18.2 contract: the Vietnamese docs must not leak the
     legacy Japanese subtitle decorations (``ポートフォリオ`` etc.).
