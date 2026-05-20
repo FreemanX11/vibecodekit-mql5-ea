@@ -120,6 +120,27 @@ _TIMELINE_CAPTIONS = {
     "en": ("Read spec", "Render scaffold", "Lint + gate", "Compile + dashboard"),
 }
 
+# Severity prefix for take-note callouts in the markdown rendering.
+#
+# PR-18.3 replaced the original ``ℹ️ / ⚠️ / 🔥`` emoji with plain text
+# tags (headless Chrome had no emoji font → tofu in PDF). PR-18.4 then
+# split the table by language so the EN markdown gets EN tags — the
+# rest of ``render_markdown`` already localizes section headers, note
+# bodies and table columns, so the severity tag was the last hard-coded
+# Vietnamese string.
+_SEVERITY_PREFIX = {
+    "vi": {
+        "info": "[Lưu ý]",
+        "warn": "[Cảnh báo]",
+        "danger": "[Nguy hiểm]",
+    },
+    "en": {
+        "info": "[Note]",
+        "warn": "[Warning]",
+        "danger": "[Danger]",
+    },
+}
+
 # Decorative subtitle that sits above the manifesto card's main claim.
 # Was Japanese decorative text in PR-15/16. PR-18.2 swapped the body to
 # Vietnamese but kept the visual ``「 」`` corner-bracket aesthetic.
@@ -317,17 +338,20 @@ def render_markdown(content: DocContent) -> str:
     if content.notes:
         lines.append(f"## {labels['notes']}")
         lines.append("")
-        # PR-18.3: severity prefixes use plain Vietnamese tag labels
-        # instead of emoji. The previous ``ℹ️ / ⚠️ / 🔥`` emoji rendered
-        # as tofu squares in headless-Chrome PDF export (no emoji font
+        # PR-18.3: severity prefixes use plain text labels instead of
+        # emoji. The previous ``ℹ️ / ⚠️ / 🔥`` emoji rendered as tofu
+        # squares in headless-Chrome PDF export (no emoji font
         # installed). Text labels render correctly in any font.
-        sev_prefix = {
-            "info": "[Lưu ý]",
-            "warn": "[Cảnh báo]",
-            "danger": "[Nguy hiểm]",
-        }
+        #
+        # PR-18.4: labels honour ``content.lang`` so the EN markdown
+        # output gets EN labels (the rest of the doc — section headers,
+        # note titles, table headers — already localizes here).
+        sev_prefix = _SEVERITY_PREFIX.get(
+            content.lang, _SEVERITY_PREFIX["vi"]
+        )
+        default_prefix = sev_prefix["info"]
         for n in content.notes:
-            prefix = sev_prefix.get(n.severity, "[Lưu ý]")  # default uses VN label for parity with the three known severities
+            prefix = sev_prefix.get(n.severity, default_prefix)
             lines.append(f"> {prefix} **{n.title}**")
             lines.append(f"> {n.body}")
             lines.append("")
