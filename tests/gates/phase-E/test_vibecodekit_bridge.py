@@ -1050,6 +1050,29 @@ def test_discover_scan_rejects_missing_root(tmp_path: Path) -> None:
     assert "does not exist" in result["error"]
 
 
+def test_discover_scan_accepts_single_mq5_file_as_root(tmp_path: Path) -> None:
+    """PR-21 regression: agents that pass a single downloaded ``.mq5``
+    file as ``root`` (e.g. ``Thanos EA Source Code.mq5``) used to be
+    rejected with ``"root is not a directory"``. The bridge now mirrors
+    ``mql5-scan`` CLI and produces a 1-entry inventory with ``root``
+    normalised to the parent directory so the chain pattern
+    ``Path(root) / files[i].path`` works in both single-file and
+    directory mode.
+    """
+    src = tmp_path / "Thanos EA Source Code.mq5"
+    src.write_text("// single-file EA\nvoid OnTick(){}\n", encoding="utf-8")
+    srv = _load_server()
+    result = _call(srv, "discover.scan", {"root": str(src)})
+    assert result["ok"] is True
+    assert result["counts"].get("ea-source") == 1
+    assert len(result["files"]) == 1
+    entry = result["files"][0]
+    assert entry["path"] == "Thanos EA Source Code.mq5"
+    assert entry["kind"] == "ea-source"
+    # Chain pattern: <root> / <path> resolves back to the original file.
+    assert Path(result["root"]) / entry["path"] == src.resolve()
+
+
 def test_discover_llm_context_wires_cloud_api(tmp_path: Path) -> None:
     mq5 = tmp_path / "TrendEA.mq5"
     mq5.write_text(

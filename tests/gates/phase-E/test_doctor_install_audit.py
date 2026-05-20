@@ -129,3 +129,59 @@ def test_scan_finds_kit_scaffold_files(tmp_path: Path) -> None:
 def test_scan_returns_empty_report_for_missing_root(tmp_path: Path) -> None:
     rep = scan.scan_tree(tmp_path / "does-not-exist")
     assert rep.files == []
+
+
+def test_scan_single_mq5_file_returns_one_entry_inventory(tmp_path: Path) -> None:
+    """PR-21 regression: ``mql5-scan`` accepts a single classified file.
+
+    Users who download a one-file EA (e.g. ``Thanos EA Source Code.mq5``)
+    pointed ``mql5-scan`` straight at it and got
+    ``{root: <file>, files: [], counts: {}}`` because ``Path.rglob`` on
+    a file yields nothing. The fix treats a file root as a 1-entry
+    inventory and normalises ``root`` to the parent directory so the
+    standard chain pattern ``Path(root) / files[i].path`` keeps working.
+    """
+    src = tmp_path / "Thanos EA Source Code.mq5"
+    src.write_text("// single-file EA\nvoid OnTick(){}\n", encoding="utf-8")
+    rep = scan.scan_tree(src)
+    assert rep.root == str(tmp_path)
+    assert rep.counts == {"ea-source": 1}
+    assert len(rep.files) == 1
+    entry = rep.files[0]
+    assert entry["path"] == "Thanos EA Source Code.mq5"
+    assert entry["kind"] == "ea-source"
+    assert entry["size"] == src.stat().st_size
+    # Chain pattern: <root> / <path> must equal the original file.
+    assert Path(rep.root) / entry["path"] == src
+
+
+def test_scan_single_file_with_unknown_extension_returns_empty(
+    tmp_path: Path,
+) -> None:
+    """A single file with a non-classified extension is still empty."""
+    junk = tmp_path / "notes.txt"
+    junk.write_text("not a kit artifact\n", encoding="utf-8")
+    rep = scan.scan_tree(junk)
+    assert rep.files == []
+    assert rep.counts == {}
+
+
+def test_scan_classifies_each_kit_known_extension_in_single_file_mode(
+    tmp_path: Path,
+) -> None:
+    """All 5 KIND_BY_EXT entries should work in single-file mode too."""
+    cases = {
+        "ea.mq5":   "ea-source",
+        "lib.mqh":  "include",
+        "p.set":    "tester-set",
+        "ea.ex5":   "compiled",
+        "m.onnx":   "onnx-model",
+    }
+    for name, kind in cases.items():
+        f = tmp_path / name
+        f.write_bytes(b"\x00")
+        rep = scan.scan_tree(f)
+        assert rep.counts == {kind: 1}, (
+            f"single-file scan of {name} should classify as {kind!r}, got {rep.counts}"
+        )
+        assert rep.files[0]["path"] == name
