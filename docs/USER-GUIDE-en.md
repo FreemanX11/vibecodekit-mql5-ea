@@ -7,12 +7,15 @@ audience: end_user, dev_team, ai_agent_operator
 
 # Step-by-step guide: build an EA project with `vibecodekit-mql5-ea`
 
-> Walks you from **zero → compiled `.ex5` + published dashboard** with
-> the exact commands and expected output for each step. All counts in
-> this document match the post-PR-8.1 baseline: **50 CLI commands**,
-> **4 MCP servers (29 tools on `vibecodekit-bridge`)**, **23 anti-pattern
-> detectors**, **8 optional schema blocks** on `ea-spec.yaml`,
-> **604 tests passing / 6 skipped**.
+> Walks you from **zero → compiled `.ex5` + published dashboard +
+> Neo-Retro Dev Deck docs** with the exact commands and expected output
+> for each step. All counts in this document match the post-PR-19
+> baseline: **50 CLI commands**, **4 MCP servers (30 tools on
+> `vibecodekit-bridge`)**, **23 anti-pattern detectors**, **8 optional
+> schema blocks** on `ea-spec.yaml`, **799 tests passing / 2 skipped**.
+>
+> Note: docs default to **Vietnamese** (project default). Pass
+> `--docs-lang en` to opt back to English.
 
 > 🇻🇳 Vietnamese version: [USER-GUIDE-vi.md](USER-GUIDE-vi.md)
 > 📖 Full reference manual: [USAGE-en.md](USAGE-en.md)
@@ -31,6 +34,7 @@ audience: end_user, dev_team, ai_agent_operator
   - [4.1. Idea → `ea-spec.yaml`](#41-idea--ea-specyaml)
   - [4.2. Validate the spec (8 blocks)](#42-validate-the-spec-8-blocks)
   - [4.3. Build with `mql5-auto-build`](#43-build-with-mql5-auto-build)
+  - [4.3.1. EA docs auto-generation (Neo-Retro Dev Deck)](#431-ea-docs-auto-generation-neo-retro-dev-deck)
   - [4.4. Verify — lint, method-hiding, trader17, permission](#44-verify--lint-method-hiding-trader17-permission)
   - [4.5. Test — backtest, walkforward, Monte Carlo](#45-test--backtest-walkforward-monte-carlo)
   - [4.6. Review — engineering, CSO, CEO, RRI](#46-review--engineering-cso-ceo-rri)
@@ -39,6 +43,7 @@ audience: end_user, dev_team, ai_agent_operator
   - [5.1. Install `vibecodekit-bridge` into your tool](#51-install-vibecodekit-bridge-into-your-tool)
   - [5.2. Sample agent prompt](#52-sample-agent-prompt)
   - [5.3. Fix-loop `verify.lint` ↔ `verify.auto_fix`](#53-fix-loop-verifylint--verifyauto_fix)
+  - [5.4. Re-render docs over `docs.ea_render`](#54-re-render-docs-over-docsea_render)
 - [6. `ea-spec.yaml` — 8 optional blocks](#6-ea-specyaml--8-optional-blocks)
 - [7. Troubleshooting & FAQ](#7-troubleshooting--faq)
 - [8. Appendix — 50 CLI commands by group](#8-appendix--50-cli-commands-by-group)
@@ -317,15 +322,94 @@ Output tree at `./dist`:
 dist/
 ├── TrendEA_EURUSD_H1.mq5
 ├── TrendEA_EURUSD_H1.ex5
+├── TrendEA_EURUSD_H1.docs.html     # Neo-Retro Dev Deck docs (open in browser)
+├── TrendEA_EURUSD_H1.docs.md       # Markdown twin for git/agents
 ├── lint.json
 ├── permission.json
-├── dashboard.html
+├── quality-matrix.html              # 64-cell matrix + docs embed card
 └── build.log
 ```
 
 If any stage fails (e.g. compile reports `unknown identifier`),
 `auto_build` does **not** run permission-gate / dashboard. You fix
 first.
+
+### 4.3.1. EA docs auto-generation (Neo-Retro Dev Deck)
+
+After compile + gate, the pipeline auto-renders a per-EA user guide
+following the **Neo-Retro Dev Deck** design system (cream grid-paper
+bg, thick-bordered hot-pink / yellow / cyan blocks, pixel-art icons).
+Language defaults to **Vietnamese** for the project. MQL5 identifiers
+(`InpMagic`, `InpRiskMoney`, `CRiskGuard`, `ema_cross`, ...) are kept
+verbatim regardless of language.
+
+**Generated docs structure**
+
+| Section | Content |
+|---------|---------|
+| Frontmatter | `ea_name`, `ea_version`, `kit_version`, `built_at`, `compile` + `gate` verdicts |
+| Hero manifesto | Slogan + EA name |
+| System architecture | 3-layer block: Risk guard / Signal fusion / Execution |
+| Strategy evolution | 4-step timeline: Scan → Compose → Verify → Ship |
+| EA inputs | `Name · Type · Default · Note` table parsed from every `input` declaration in the `.mq5` |
+| Take notes | Auto-derived from the 8 PR-2/PR-8 spec blocks (prop-firm, trailing, partial close, ONNX, ...) |
+
+Vietnamese is the default (override with `--docs-lang en`):
+
+![EA docs Neo-Retro VN — hero + architecture](https://app.devin.ai/attachments/5678d878-23f9-433c-a6f2-b4f4c39bade5/screenshot-ea-docs-vi-top.png)
+
+![EA docs Neo-Retro VN — timeline + params + take-notes](https://app.devin.ai/attachments/cb444a06-96e7-46f3-bdaa-b4d9f3adef72/screenshot-ea-docs-vi-middle.png)
+
+The `quality-matrix.html` dashboard grows a yellow embed card linking
+to whichever doc formats actually landed on disk (PDF only appears if
+Chrome was available):
+
+![Dashboard with EA Docs embed card](https://app.devin.ai/attachments/c6618a98-d836-4494-9a71-491c1202b18b/screenshot-dashboard-embed.png)
+
+**Docs flags**
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--no-docs` | (off) | Skip the docs stage entirely |
+| `--docs-lang vi\|en` | `vi` | Doc language. `en` opts back to English; default is Vietnamese |
+| `--docs-formats html,md` | `html,md` | Output formats. Add `pdf` to render via headless Chrome |
+
+**Example — export PDF via headless Chrome:**
+
+```bash
+python -m vibecodekit_mql5.auto_build \
+    --spec ea-spec.yaml \
+    --out ./dist \
+    --mode personal \
+    --docs-formats html,md,pdf
+```
+
+When `pdf` is requested, the pipeline discovers Chrome in this order:
+
+1. `$MQL5_CHROME_PATH` env var (strongest override)
+2. Chrome for Testing in the Devin sandbox
+3. Playwright chromium, if installed
+4. `chromium` / `chrome` on `PATH`
+
+If no host has Chrome, the build still passes; `auto-build-report.json`
+records `docs.pdf_error` with the env-var hint for overriding. The
+dashboard only shows links to formats that actually exist on disk
+(PR-18.1).
+
+**Re-render docs standalone (no EA rebuild)** — the `mql5-ea-docs` CLI:
+
+```bash
+python -m vibecodekit_mql5.ea_docs \
+    ./dist/TrendEA_EURUSD_H1.mq5 \
+    --spec ea-spec.yaml \
+    --out ./dist \
+    --lang vi \
+    --formats html,md,pdf
+```
+
+Artifacts from this CLI are **byte-identical** to the pipeline’s because
+both call the shared `auto_build_docs_stage.write_docs_to_disk` helper
+(PR-19).
 
 ### 4.4. Verify — lint, method-hiding, trader17, permission
 
@@ -477,9 +561,9 @@ The kit ships **4 MCP servers** (JSON-RPC 2.0 over stdio):
 | `metaeditor-bridge` | 3 | Write | Compile EAs via headless MetaEditor (Wine) |
 | `mt5-bridge` | 10 | **READ-ONLY** | Read account, position, history, symbol info |
 | `algo-forge-bridge` | 6 | Write | CRUD repos, open PRs on MQL5 Algo Forge |
-| `vibecodekit-bridge` | **29** | Write | Full EA build pipeline (spec → ship) |
+| `vibecodekit-bridge` | **30** | Write | Full EA build pipeline (spec → ship + docs) |
 
-`vibecodekit-bridge` is the one you want. The 29 tools group as:
+`vibecodekit-bridge` is the one you want. The 30 tools group as:
 
 | Group | Tool count | Names |
 |-------|------------|-------|
@@ -491,6 +575,7 @@ The kit ships **4 MCP servers** (JSON-RPC 2.0 over stdio):
 | `dashboard.*` | 1 | `dashboard.publish` |
 | `forge.*` | 1 | `forge.pr.create` |
 | `discover.*` | 3 | `discover.doctor`, `discover.scan`, `discover.llm_context` |
+| `docs.*` | 1 | `docs.ea_render` (PR-19) |
 
 ### 5.1. Install `vibecodekit-bridge` into your tool
 
@@ -562,10 +647,13 @@ The agent will chain:
 
 1. `spec.from_prompt` — generate `ea-spec.yaml`.
 2. `spec.validate` — confirm schema OK.
-3. `build.auto` — render + compile + permission gate + dashboard.
+3. `build.auto` — render + compile + permission gate + docs + dashboard.
 4. `verify.lint` — scan 23 anti-patterns.
 5. `verify.trader17` — 17-point checklist.
 6. `dashboard.publish` — produce `dashboard.html`.
+7. `docs.ea_render` (PR-19) — optional, re-render docs in another
+   language or with PDF without re-running the full build (see
+   [5.4](#54-re-render-docs-over-docsea_render)).
 
 **In Cursor (chat sidebar):**
 
@@ -593,6 +681,44 @@ handler). An agent typically clears all ERRORs in ≤ 3 iterations.
 > ⚠️ `verify.auto_fix` reads files with `errors='replace'` (PR-7.1
 > hotfix) — `.mq5` files containing Windows-1252 characters (©,
 > em-dash) won't crash the bridge.
+
+### 5.4. Re-render docs over `docs.ea_render`
+
+PR-19 added the 30th tool: `docs.ea_render`. An agent can call it
+directly when it only needs to re-render docs — switch language, add
+PDF output, regenerate after tweaking the spec — without re-running
+the full `build.auto` pipeline.
+
+```python
+out = call('docs.ea_render', {
+  'spec':       spec_dict,                     # the parsed dict, same shape spec.validate returns
+  'mq5_source': open('./out/MyEA.mq5').read(),
+  'out_dir':    './out',
+  'lang':       'vi',                           # default; 'en' opts out
+  'formats':    ['html', 'md', 'pdf'],         # default ['html','md']
+})
+# → {'ok': True, 'lang': 'vi', 'formats': [...],
+#    'outputs': {'html': '.../MyEA.docs.html',
+#                'md':   '.../MyEA.docs.md',
+#                'pdf':  '.../MyEA.docs.pdf'},
+#    'pdf_error': null}
+```
+
+Missing required keys in `spec` → server returns JSON-RPC `-32602
+Invalid params` immediately (PR-13). A spec that fails schema validation
+returns `{ok: false, stage: 'validate', errors: [...]}`. If Chrome is
+unavailable and `formats` includes `pdf`, the other formats still emit
+fine and `pdf_error` records the reason.
+
+To read the `.mq5` from disk instead of passing it in-memory:
+
+```python
+call('docs.ea_render', {
+  'spec':     spec_dict,
+  'mq5_path': './out/MyEA.mq5',
+  'out_dir':  './out',
+})
+```
 
 **`discover.*` tools for agent context priming:**
 
@@ -816,14 +942,18 @@ Total: **49 CLI** + 1 meta router = **50 entries**.
 - **Path A (CLI)** suits learning, debugging, teaching, demos.
   7 explicit steps from prompt → ship.
 - **Path B (MCP)** suits in-IDE coding agents (Codex / Claude /
-  Cursor / Devin / Claude Desktop). 29 tools cover the full
-  pipeline.
+  Cursor / Devin / Claude Desktop). 30 tools cover the full
+  pipeline (including `docs.ea_render` for on-demand re-renders).
 - The kit pipeline is the **source of truth**. Path B is just a
   JSON-RPC wrapper over Path A — no stage is bypassed.
+- Every build auto-generates a Vietnamese-by-default Neo-Retro Dev
+  Deck user guide for the EA (`<name>.docs.html` + `.docs.md`, plus
+  `.docs.pdf` when Chrome is available). The dashboard links to
+  whichever formats actually landed on disk.
 - The `ea-spec.yaml` schema now covers 8 optional blocks (3 PR-2 +
   5 PR-8) for prop-firm, trailing, partial close, correlation,
   swap filter, and logs configuration.
-- Latest baseline: **604 tests passed / 6 skipped**, ruff clean,
+- Latest baseline: **799 tests passed / 2 skipped**, ruff clean,
   post-phase-E audit passes.
 
 For issues not in [section 7](#7-troubleshooting--faq), open one at

@@ -7,12 +7,13 @@ audience: end_user, dev_team, ai_agent_operator
 
 # Hướng dẫn step-by-step build project EA bằng `vibecodekit-mql5-ea`
 
-> Tài liệu này đi từ **zero → file `.ex5` đã compile + dashboard public**
-> qua đúng từng bước, kèm câu lệnh thật và snippet output kỳ vọng. Mọi
-> con số trong tài liệu đều khớp với baseline mới nhất sau PR-8.1:
-> **50 CLI command**, **4 MCP server (29 tool trên `vibecodekit-bridge`)**,
-> **23 anti-pattern detector**, **8 schema block optional** trên
-> `ea-spec.yaml`, **604 test passing / 6 skipped**.
+> Tài liệu này đi từ **zero → file `.ex5` đã compile + dashboard public +
+> docs Neo-Retro Dev Deck tiếng Việt** qua đúng từng bước, kèm câu lệnh
+> thật và snippet output kỳ vọng. Mọi con số trong tài liệu đều khớp với
+> baseline mới nhất sau PR-19: **50 CLI command**, **4 MCP server (30
+> tool trên `vibecodekit-bridge`)**, **23 anti-pattern detector**, **8
+> schema block optional** trên `ea-spec.yaml`, **799 test passing / 2
+> skipped**.
 
 > 🇬🇧 Bản tiếng Anh: [USER-GUIDE-en.md](USER-GUIDE-en.md)
 > 📖 Reference manual đầy đủ: [USAGE-vi.md](USAGE-vi.md)
@@ -31,6 +32,7 @@ audience: end_user, dev_team, ai_agent_operator
   - [4.1. Từ ý tưởng → `ea-spec.yaml`](#41-từ-ý-tưởng--ea-specyaml)
   - [4.2. Validate spec (8 block)](#42-validate-spec-8-block)
   - [4.3. Build EA bằng `mql5-auto-build`](#43-build-ea-bằng-mql5-auto-build)
+  - [4.3.1. EA docs auto-generation (Neo-Retro Dev Deck)](#431-ea-docs-auto-generation-neo-retro-dev-deck)
   - [4.4. Verify — lint, method-hiding, trader17, permission](#44-verify--lint-method-hiding-trader17-permission)
   - [4.5. Test — backtest, walkforward, Monte Carlo](#45-test--backtest-walkforward-monte-carlo)
   - [4.6. Review — engineering, CSO, CEO, RRI](#46-review--engineering-cso-ceo-rri)
@@ -39,6 +41,7 @@ audience: end_user, dev_team, ai_agent_operator
   - [5.1. Cài `vibecodekit-bridge` vào tool](#51-cài-vibecodekit-bridge-vào-tool)
   - [5.2. Prompt mẫu cho agent](#52-prompt-mẫu-cho-agent)
   - [5.3. Fix-loop `verify.lint` ↔ `verify.auto_fix`](#53-fix-loop-verifylint--verifyauto_fix)
+  - [5.4. Re-render docs qua `docs.ea_render`](#54-re-render-docs-qua-docsea_render)
 - [6. Schema `ea-spec.yaml` — 8 block optional](#6-schema-ea-specyaml--8-block-optional)
 - [7. Troubleshooting & FAQ](#7-troubleshooting--faq)
 - [8. Phụ lục — 50 CLI command theo nhóm](#8-phụ-lục--50-cli-command-theo-nhóm)
@@ -316,16 +319,89 @@ Output `./dist`:
 
 ```
 dist/
-├── TrendEA_EURUSD_H1.mq5     # source đã render
-├── TrendEA_EURUSD_H1.ex5     # binary compile xanh
-├── lint.json                  # 0 ERROR + ≤ N WARN tuỳ AP
-├── permission.json            # 7-layer report
-├── dashboard.html             # quality matrix 64-cell
+├── TrendEA_EURUSD_H1.mq5            # source đã render
+├── TrendEA_EURUSD_H1.ex5            # binary compile xanh
+├── TrendEA_EURUSD_H1.docs.html      # docs Neo-Retro (mở browser)
+├── TrendEA_EURUSD_H1.docs.md        # docs Markdown song song
+├── lint.json                         # 0 ERROR + ≤ N WARN tuỳ AP
+├── permission.json                   # 7-layer report
+├── quality-matrix.html               # quality matrix 64-cell + embed card
 └── build.log
 ```
 
 Nếu một stage fail (ví dụ compile báo `unknown identifier`), `auto_build`
 **không** chạy permission-gate / dashboard, để dev fix trước.
+
+### 4.3.1. EA docs auto-generation (Neo-Retro Dev Deck)
+
+Sau khi compile + gate xong, pipeline tự render 1 file docs hướng dẫn
+chi tiết cho EA vừa build — **mặc định 100% tiếng Việt**, theo design
+system Neo-Retro Dev Deck (cream grid bg, hot pink / yellow / cyan block
+viền đen dày, pixel-art icon). Code identifier (`InpMagic`,
+`InpRiskMoney`, `CRiskGuard`, `ema_cross`, ...) giữ nguyên theo project.
+
+**Cấu trúc docs sinh ra:**
+
+| Section | Nội dung |
+|---------|----------|
+| Frontmatter | `ea_name`, `ea_version`, `kit_version`, `built_at`, verdict `compile` + `gate` |
+| Hero manifesto | Slogan + tên EA |
+| Kiến trúc hệ thống | 3 layer block: Quản lý vốn / Tổng hợp tín hiệu / Thực thi lệnh |
+| Chu trình chiến lược | Timeline 4 bước: Quét → Soạn → Kiểm → Phát hành |
+| Tham số EA | Bảng `Tên · Kiểu · Mặc định · Ghi chú` parse từ mọi `input` declaration trong `.mq5` |
+| Lưu ý quan trọng | Take-notes auto-derived từ 8 block PR-2/PR-8 (prop-firm, trailing, partial close, ONNX, ...) |
+
+![EA docs Neo-Retro VN — phần hero + kiến trúc](https://app.devin.ai/attachments/5678d878-23f9-433c-a6f2-b4f4c39bade5/screenshot-ea-docs-vi-top.png)
+
+![EA docs Neo-Retro VN — timeline + params + take-notes](https://app.devin.ai/attachments/cb444a06-96e7-46f3-bdaa-b4d9f3adef72/screenshot-ea-docs-vi-middle.png)
+
+**Dashboard `quality-matrix.html`** mọc thêm card vàng đính kèm 2-3 link
+tới docs html / md / pdf (PDF chỉ xuất hiện nếu Chrome có sẵn):
+
+![Dashboard với embed card EA Docs](https://app.devin.ai/attachments/c6618a98-d836-4494-9a71-491c1202b18b/screenshot-dashboard-embed.png)
+
+**Cờ điều khiển docs**
+
+| Cờ | Mặc định | Tác dụng |
+|----|----------|----------|
+| `--no-docs` | (off) | Bỏ qua stage docs hoàn toàn |
+| `--docs-lang vi\|en` | `vi` | Ngôn ngữ docs. `en` opt-out về tiếng Anh, mặc định tiếng Việt |
+| `--docs-formats html,md` | `html,md` | Format xuất. Thêm `pdf` để render qua headless Chrome |
+
+**Ví dụ — xuất kèm PDF qua headless Chrome:**
+
+```bash
+python -m vibecodekit_mql5.auto_build \
+    --spec ea-spec.yaml \
+    --out ./dist \
+    --mode personal \
+    --docs-formats html,md,pdf
+```
+
+Khi `pdf` được yêu cầu, pipeline dò Chrome theo thứ tự:
+
+1. `$MQL5_CHROME_PATH` env var (override mạnh nhất)
+2. Chrome for Testing trong Devin sandbox
+3. Playwright chromium nếu đã cài
+4. `chromium` / `chrome` trên `PATH`
+
+Nếu không host nào có Chrome → build **vẫn xanh**, `auto-build-report.json`
+ghi `docs.pdf_error` chỉ rõ env var để override. Dashboard chỉ render link
+tới các format thực sự có trên đĩa (PR-18.1).
+
+**Render lại docs độc lập (không cần re-build EA)** — CLI `mql5-ea-docs`:
+
+```bash
+python -m vibecodekit_mql5.ea_docs \
+    ./dist/TrendEA_EURUSD_H1.mq5 \
+    --spec ea-spec.yaml \
+    --out ./dist \
+    --lang vi \
+    --formats html,md,pdf
+```
+
+Lưu ý: artifact sinh ra từ CLI này **byte-identical** với artifact pipeline
+vì cả hai share helper `auto_build_docs_stage.write_docs_to_disk` (PR-19).
 
 ### 4.4. Verify — lint, method-hiding, trader17, permission
 
@@ -475,9 +551,9 @@ Kit có 4 MCP server (JSON-RPC 2.0 over stdio):
 | `metaeditor-bridge` | 3 | Write | Compile EA qua MetaEditor headless (Wine) |
 | `mt5-bridge` | 10 | **READ-ONLY** | Đọc account, position, history, symbol info |
 | `algo-forge-bridge` | 6 | Write | CRUD repo, PR trên MQL5 Algo Forge |
-| `vibecodekit-bridge` | **29** | Write | Toàn bộ pipeline build EA (spec → ship) |
+| `vibecodekit-bridge` | **30** | Write | Toàn bộ pipeline build EA (spec → ship + docs) |
 
-`vibecodekit-bridge` là server bạn cần. 29 tool chia theo nhóm:
+`vibecodekit-bridge` là server bạn cần. 30 tool chia theo nhóm:
 
 | Nhóm | Tool count | Tên |
 |------|------------|-----|
@@ -489,6 +565,7 @@ Kit có 4 MCP server (JSON-RPC 2.0 over stdio):
 | `dashboard.*` | 1 | `dashboard.publish` |
 | `forge.*` | 1 | `forge.pr.create` |
 | `discover.*` | 3 | `discover.doctor`, `discover.scan`, `discover.llm_context` |
+| `docs.*` | 1 | `docs.ea_render` (PR-19) |
 
 ### 5.1. Cài `vibecodekit-bridge` vào tool
 
@@ -561,10 +638,12 @@ Agent sẽ tự gọi tuần tự:
 
 1. `spec.from_prompt` — tạo `ea-spec.yaml`.
 2. `spec.validate` — confirm schema OK.
-3. `build.auto` — render + compile + permission gate + dashboard.
+3. `build.auto` — render + compile + permission gate + docs + dashboard.
 4. `verify.lint` — quét 23 AP.
 5. `verify.trader17` — 17 checklist.
 6. `dashboard.publish` — generate `dashboard.html`.
+7. `docs.ea_render` (PR-19) — tùy chọn, re-render docs tiếng Việt /
+   xuất kèm PDF nếu agent cần version khác (xem [5.4](#54-re-render-docs-qua-docsea_render)).
 
 **Trong Cursor (chat sidebar):**
 
@@ -581,6 +660,42 @@ Loop:
   lint_result = call('verify.lint', {'path': './out/MyEA.mq5'})
   if lint_result['errors_count'] == 0: break
   call('verify.auto_fix', {'path': './out/MyEA.mq5'})  # rewrite in-place
+```
+
+### 5.4. Re-render docs qua `docs.ea_render`
+
+PR-19 mở tool số 30: `docs.ea_render`. Agent có thể gọi trực tiếp khi
+chỉ cần re-render docs (đổi ngôn ngữ, thêm PDF, tưới lại sau khi tweak
+spec) mà không muốn re-run cả pipeline `build.auto`.
+
+```python
+out = call('docs.ea_render', {
+  'spec':      spec_dict,                      # nguyên dạng parsed từ spec.validate
+  'mq5_source': open('./out/MyEA.mq5').read(),
+  'out_dir':   './out',
+  'lang':      'vi',                            # mặc định; 'en' opt-out
+  'formats':   ['html', 'md', 'pdf'],          # mặc định ['html','md']
+})
+# → {'ok': True, 'lang': 'vi', 'formats': [...],
+#    'outputs': {'html': '.../MyEA.docs.html',
+#                'md':   '.../MyEA.docs.md',
+#                'pdf':  '.../MyEA.docs.pdf'},
+#    'pdf_error': null}
+```
+
+Cặp `spec` thiếu key bắt buộc → server trả JSON-RPC `-32602 Invalid
+params` ngay lập tức (PR-13). Spec sai schema → `{ok: false, stage:
+'validate', errors: [...]}`. Chrome không có + `formats` có `pdf` →
+`pdf_error` ghi rõ lý do, các format khác vẫn xuất bình thường.
+
+Nếu muốn agent đọc file `.mq5` từ đĩa thay vì truyền in-memory:
+
+```python
+call('docs.ea_render', {
+  'spec':     spec_dict,
+  'mq5_path': './out/MyEA.mq5',
+  'out_dir':  './out',
+})
 ```
 
 `verify.auto_fix` đóng 8 AP critical tự động (AP-1 missing SL, AP-3
@@ -809,14 +924,18 @@ Tổng: **49 CLI** + 1 router meta = **50 entry**.
 - **Lối A (CLI)**: phù hợp khi học kit, debug, dạy lớp. 7 bước rõ
   ràng từ prompt → ship.
 - **Lối B (MCP)**: phù hợp khi dùng trong AI coding agent (Codex /
-  Claude / Cursor / Devin / Claude Desktop). 29 tool wrap đầy đủ
-  pipeline.
+  Claude / Cursor / Devin / Claude Desktop). 30 tool wrap đầy đủ
+  pipeline (kèm `docs.ea_render` để re-render docs theo yêu cầu).
 - Pipeline kit là **source of truth**. Lối B chỉ là JSON-RPC wrapper
   của lối A — không bypass stage nào.
+- Mỗi build tự sinh ra docs Neo-Retro Dev Deck **mặc định tiếng Việt**
+  (`<name>.docs.html` + `.docs.md`, kèm `.docs.pdf` nếu có Chrome).
+  Dashboard `quality-matrix.html` chỉ link tới format thực sự có
+  trên đĩa.
 - Schema `ea-spec.yaml` đã mở rộng đủ 8 block optional (3 PR-2 +
   5 PR-8) cho EA prop firm / trailing / partial close / correlation
   / swap filter / logs.
-- Baseline mới nhất: **604 test passed / 6 skipped**, ruff clean,
+- Baseline mới nhất: **799 test passed / 2 skipped**, ruff clean,
   audit post-phase-E pass.
 
 Khi gặp blocker không có trong mục [7. Troubleshooting](#7-troubleshooting--faq), mở issue ở
