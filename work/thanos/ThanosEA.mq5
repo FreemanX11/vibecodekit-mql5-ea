@@ -1,17 +1,17 @@
 //+------------------------------------------------------------------+
 //|                                                     ThanosEA.mq5 |
-//|   Grid EA — rebuilt via vibecodekit-mql5-ea enterprise pipeline   |
+//|   Grid DCA EA — rebuilt via vibecodekit-mql5-ea enterprise pipeline|
 //|   Original: Grid_Converted (cmillion, MQL4→MQL5)                 |
 //|                                                                   |
-//|   Fixes applied:                                                  |
-//|     AP-5  — inputs grouped by function                            |
-//|     AP-8  — CSpreadGuard added                                    |
-//|     AP-9  — same-bar entry guard                                  |
-//|     AP-11 — netting/hedging mode validation                       |
-//|     AP-14 — CMfeMaeLogger wired                                   |
-//|     AP-15 — CTrade class replaces direct OrderSend                |
-//|     AP-20 — CPipNormalizer replaces all hardcoded pip math        |
-//|     AP-21 — digits-tested meta tag added                          |
+//|   v2.1 — Feature expansion:                                       |
+//|     EMA range entry (± points from EMA baseline)                  |
+//|     DCA lot = initial * multiplier^count                          |
+//|     TP from breakeven of series                                   |
+//|     Hedge trimming: farthest + most-negative order pairing        |
+//|     Close-all on profit target                                    |
+//|     Daily TP limit — pause trading until next day                 |
+//|                                                                   |
+//|   Fixes preserved: AP-5/8/9/11/14/15/20/21                       |
 //|   Code quality: all obfuscated names replaced                     |
 //+------------------------------------------------------------------+
 // digits-tested: 2,3,4,5
@@ -26,57 +26,48 @@
 sinput bool   AllowBuy           = true;
 sinput bool   AllowSell          = true;
 sinput bool   EAMakesFirstOrder  = true;
-sinput bool   OpenOrderOnTrend   = false;
 
-//=== Group 2: Grid Spacing (pips) ===//
-input int     FirstStepPips         = 10;
-sinput int    MinPriceDistancePips  = 30;
-sinput int    MoveStepPips          = 5;
-input int     DistBetweenOrdersPips = 30;
+//=== Group 2: EMA Range Entry ===//
+input int     EmaPeriod          = 20;
+input int     EmaRangePoints     = 3000;
+sinput ENUM_TIMEFRAMES EmaTimeframe = PERIOD_CURRENT;
 
-//=== Group 3: Lot & Martingale ===//
-input double  StartLot             = 0.1;
-sinput double LotIncrement         = 0.0;
-input double  LotMultiplier        = 1.5;
-sinput int    LotDecimalPlaces     = 2;
+//=== Group 3: DCA Grid ===//
+input int     DcaStepPips        = 30;
+input double  StartLot           = 0.01;
+input double  LotMultiplier      = 1.4;
+sinput int    LotDecimalPlaces   = 2;
 
-//=== Group 4: Profit & Loss Thresholds ===//
-sinput double MaxAllowedLoss              = 100000.0;
-sinput double CloseLossByDrawdown         = 10.0;
-sinput double ProfitCloseAllDirections    = 10.0;
-input double  ProfitCloseOneDirection     = 50.0;
-sinput int    AutoCalcProfitMultiplier    = 50;
-sinput double LossCloseThreshold          = 100000.0;
+//=== Group 4: Take Profit ===//
+input int     TpFromBEPips       = 20;
+sinput double CloseAllProfit     = 10.0;
+sinput double DailyTpTarget      = 50.0;
 
-//=== Group 5: Trailing Stop (0=Off, 1=Candles, 2=Fractals, 3+=Points) ===//
-input int     TrailingType        = 1;
+//=== Group 5: Hedge Trimming ===//
+sinput bool   EnableTrimFarthest   = true;
+sinput bool   EnableTrimMostLoss   = true;
+sinput int    TrimTpPoints         = 1000;
+
+//=== Group 6: Trailing Stop (0=Off, 1=Candles, 2=Fractals, 3+=Points) ===//
+sinput int    TrailingType        = 0;
 sinput int    TrailingStepPips    = 0;
 sinput int    MinTrailingProfit   = 10;
 sinput int    TrailingPadding     = 0;
 sinput int    TrailingTimeframe   = 15;
 
-//=== Group 6: SL/TP & Indicators ===//
-sinput int    StoplossPips     = 0;
-sinput int    TakeprofitPips   = 0;
-sinput bool   UseRSIFilter     = false;
-sinput int    RSIOversold      = 15;
-sinput int    RSIOverbought    = 85;
-sinput int    RSIPeriod        = 5;
-sinput int    RSITimeframe     = 0;
-
-//=== Group 7: Schedule & Cleanup (sinput — not in optimizer) ===//
+//=== Group 7: Schedule & Cleanup (sinput) ===//
 sinput bool   DeleteOrdersAtHour = true;
 sinput int    DeleteHour     = 20;
 sinput int    StartHour      = 0;
 sinput int    EndHour        = 24;
 
-//=== Group 8: Risk Management (sinput — not in optimizer) ===//
+//=== Group 8: Risk Management (sinput) ===//
 sinput double MaxSpreadPips    = 5.0;
 sinput double DailyLossPct    = 0.05;
 sinput int    MaxOpenPositions = 0;
 sinput double FreezeOnDDPct   = 0.10;
 
-//=== Group 9: Display & Identification (sinput — not in optimizer) ===//
+//=== Group 9: Display & Identification (sinput) ===//
 sinput int    MagicNumber    = 777;
 sinput int    FontSize       = 10;
 sinput color  InfoColor      = clrLime;
@@ -101,9 +92,11 @@ int       stopsLevelPoints   = 0;
 int       slippage           = 0;
 bool      isHedging          = false;
 int       trailingTF         = 0;
-int       gridDistance        = 0;
-int       gridFirstStep      = 0;
 long      lastBarCount       = 0;
+int       emaHandle          = INVALID_HANDLE;
+double    dailyClosedProfit  = 0.0;
+int       dailyTpDay         = -1;
+bool      dailyTpReached     = false;
 
 //=== Timeframe Helpers ===//
 int NextHigherTF(int minutes) {
@@ -164,6 +157,14 @@ void SetChartLabel(const string name, const string txt, int x, int y, color col)
    ObjectSetString(0, name, OBJPROP_FONT, "Arial");
 }
 
+//=== EMA Value ===//
+double GetEMA() {
+   if(emaHandle == INVALID_HANDLE) return 0.0;
+   double buf[];
+   if(CopyBuffer(emaHandle, 0, 0, 1, buf) <= 0) return 0.0;
+   return buf[0];
+}
+
 //=== RSI Wrapper ===//
 double GetRSI(const string sym, ENUM_TIMEFRAMES tf, int period, ENUM_APPLIED_PRICE price, int shift) {
    static int handle = -1;
@@ -206,16 +207,14 @@ double CalcTrailingLevel(int direction, double currentPrice, double trailParam) 
    ENUM_TIMEFRAMES tf = TFFromMinutes(trailingTF);
 
    if(trailParam > 2.0) {
-      // Points-based trailing
       if(direction == 1)
          level = NormalizeDouble(currentPrice - pip.Pips((int)trailParam), _Digits);
       else
          level = NormalizeDouble(currentPrice + pip.Pips((int)trailParam), _Digits);
    } else if(trailParam == 2.0) {
-      // Fractal-based trailing
       if(direction == 1) {
          for(int i = 1; i < 100; i++) {
-            level = GetFractal(_Symbol, tf, 1, i);  // LOWER fractal
+            level = GetFractal(_Symbol, tf, 1, i);
             if(level != 0.0) {
                level -= NormalizeDouble(pip.Pips(TrailingPadding), _Digits);
                if(currentPrice - pip.Pips((int)pip.StopsLevel()) > level)
@@ -225,7 +224,7 @@ double CalcTrailingLevel(int direction, double currentPrice, double trailParam) 
          DrawArrow("FR Buy", level + pip.Point(), 218, clrRed);
       } else {
          for(int i = 1; i < 100; i++) {
-            level = GetFractal(_Symbol, tf, 0, i);  // UPPER fractal
+            level = GetFractal(_Symbol, tf, 0, i);
             if(level != 0.0) {
                level += NormalizeDouble(pip.Pips(TrailingPadding), _Digits);
                if(currentPrice + pip.Pips((int)pip.StopsLevel()) < level)
@@ -235,7 +234,6 @@ double CalcTrailingLevel(int direction, double currentPrice, double trailParam) 
          DrawArrow("FR Sell", level, 217, clrRed);
       }
    } else if(trailParam == 1.0) {
-      // Candle-based trailing
       if(direction == 1) {
          for(int i = 1; i < 500; i++) {
             level = NormalizeDouble(iLow(_Symbol, tf, i) - pip.Pips(TrailingPadding), _Digits);
@@ -259,7 +257,6 @@ double CalcTrailingLevel(int direction, double currentPrice, double trailParam) 
       }
    }
 
-   // Draw SL and STOPLEVEL markers
    if(direction == 1) {
       if(level != 0.0)
          DrawArrow("SL Buy", level, ARROW_RIGHT_PRICE, clrBlue);
@@ -315,7 +312,6 @@ void DeleteAllPendingOrders() {
 }
 
 //=== Close Positions by Direction ===//
-// direction: 1=close buys, -1=close sells, 0=close all
 int ClosePositionsByDirection(int direction) {
    int attempts = 0;
    while(true) {
@@ -327,16 +323,16 @@ int ClosePositionsByDirection(int direction) {
                ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
                if((ptype == POSITION_TYPE_BUY && (direction == 1 || direction == 0)) ||
                   (ptype == POSITION_TYPE_SELL && (direction == -1 || direction == 0))) {
+                  double profit = PositionGetDouble(POSITION_PROFIT);
                   if(trade.PositionClose(ticket)) {
-                     Comment(StringFormat("Closed position #%I64d  profit %.2f  %s",
-                             ticket, PositionGetDouble(POSITION_PROFIT),
-                             TimeToString(TimeCurrent(), TIME_SECONDS)));
+                     dailyClosedProfit += profit;
+                     Comment(StringFormat("Closed #%I64d profit %.2f %s",
+                             ticket, profit, TimeToString(TimeCurrent(), TIME_SECONDS)));
                   }
                }
             }
          }
       }
-      // Delete matching pending orders
       for(int i = OrdersTotal() - 1; i >= 0; i--) {
          ulong ticket = OrderGetTicket(i);
          if(ticket > 0) {
@@ -351,7 +347,6 @@ int ClosePositionsByDirection(int direction) {
          }
       }
 
-      // Check remaining
       int remaining = 0;
       for(int i = 0; i < PositionsTotal(); i++) {
          ulong ticket = PositionGetTicket(i);
@@ -384,18 +379,120 @@ int ClosePositionsByDirection(int direction) {
    return 1;
 }
 
-//=== Calculate Next Lot Size ===//
-double CalcNextLot(int gridLevel) {
-   if(gridLevel == 0) return StartLot;
-   return NormalizeDouble(StartLot * MathPow(LotMultiplier, gridLevel) +
-                          gridLevel * LotIncrement, LotDecimalPlaces);
+//=== Protective SL for DCA series (wide, non-interfering) ===//
+double CalcProtectiveSL(int direction, double price) {
+   double slDistance = pip.Pips(500);
+   if(direction == 1)
+      return NormalizeDouble(price - slDistance, _Digits);
+   else
+      return NormalizeDouble(price + slDistance, _Digits);
+}
+
+//=== Calculate DCA Lot: initial * multiplier^count ===//
+double CalcNextLot(int seriesCount) {
+   if(seriesCount == 0) return StartLot;
+   return NormalizeDouble(StartLot * MathPow(LotMultiplier, seriesCount), LotDecimalPlaces);
+}
+
+//=== Calculate Breakeven Price of a series ===//
+double CalcSeriesBE(int direction, double &totalLots) {
+   double weightedPrice = 0.0;
+   totalLots = 0.0;
+   for(int i = 0; i < PositionsTotal(); i++) {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      if((direction == 1 && ptype != POSITION_TYPE_BUY) ||
+         (direction == -1 && ptype != POSITION_TYPE_SELL)) continue;
+      double lots = PositionGetDouble(POSITION_VOLUME);
+      double price = PositionGetDouble(POSITION_PRICE_OPEN);
+      weightedPrice += price * lots;
+      totalLots += lots;
+   }
+   if(totalLots <= 0.0) return 0.0;
+   return NormalizeDouble(weightedPrice / totalLots, _Digits);
+}
+
+//=== Hedge Trim: pair most-profitable with target order ===//
+void TrimPair(int direction, bool trimFarthest) {
+   ulong bestTicket = 0;
+   double bestProfit = -999999.0;
+   ulong targetTicket = 0;
+   double targetValue = 0.0;
+   bool targetInit = false;
+
+   for(int i = 0; i < PositionsTotal(); i++) {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      if((direction == 1 && ptype != POSITION_TYPE_BUY) ||
+         (direction == -1 && ptype != POSITION_TYPE_SELL)) continue;
+
+      double profit = PositionGetDouble(POSITION_PROFIT);
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double currentPrice = (direction == 1) ?
+         SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double distance = MathAbs(openPrice - currentPrice);
+
+      if(profit > bestProfit) {
+         bestProfit = profit;
+         bestTicket = ticket;
+      }
+
+      if(trimFarthest) {
+         if(!targetInit || distance > targetValue) {
+            targetValue = distance;
+            targetTicket = ticket;
+            targetInit = true;
+         }
+      } else {
+         if(!targetInit || profit < targetValue) {
+            targetValue = profit;
+            targetTicket = ticket;
+            targetInit = true;
+         }
+      }
+   }
+
+   if(bestTicket == 0 || targetTicket == 0 || bestTicket == targetTicket) return;
+   if(bestProfit <= 0.0) return;
+
+   double bestLots = 0, bestOpen = 0, targetLots = 0, targetOpen = 0;
+   if(PositionSelectByTicket(bestTicket)) {
+      bestLots = PositionGetDouble(POSITION_VOLUME);
+      bestOpen = PositionGetDouble(POSITION_PRICE_OPEN);
+   }
+   if(PositionSelectByTicket(targetTicket)) {
+      targetLots = PositionGetDouble(POSITION_VOLUME);
+      targetOpen = PositionGetDouble(POSITION_PRICE_OPEN);
+   }
+   if(bestLots <= 0 || targetLots <= 0) return;
+
+   double pairBE = NormalizeDouble((bestOpen * bestLots + targetOpen * targetLots) /
+                                    (bestLots + targetLots), _Digits);
+   double trimTP = 0.0;
+   if(direction == 1)
+      trimTP = NormalizeDouble(pairBE + pip.Pips(TrimTpPoints), _Digits);
+   else
+      trimTP = NormalizeDouble(pairBE - pip.Pips(TrimTpPoints), _Digits);
+
+   trade.PositionModify(bestTicket, PositionGetDouble(POSITION_SL), trimTP);
+   trade.PositionModify(targetTicket, PositionGetDouble(POSITION_SL), trimTP);
+   PrintFormat("Trim %s: paired #%I64d (profit %.2f) with #%I64d (%s), BE=%.5f TP=%.5f",
+               trimFarthest ? "farthest" : "most-loss",
+               bestTicket, bestProfit, targetTicket,
+               trimFarthest ? "farthest" : "most-negative",
+               pairBE, trimTP);
 }
 
 //+------------------------------------------------------------------+
 //| OnInit                                                            |
 //+------------------------------------------------------------------+
 int OnInit() {
-   // AP-11: Validate account mode
    ENUM_ACCOUNT_MARGIN_MODE marginMode =
       (ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE);
    isHedging = (marginMode == ACCOUNT_MARGIN_MODE_RETAIL_HEDGING);
@@ -405,51 +502,38 @@ int OnInit() {
             ". Grid logic may not work correctly on netting accounts.");
    }
 
-   // Initialize CPipNormalizer (AP-20 fix)
    if(!pip.Init(_Symbol)) {
       Alert("CPipNormalizer failed to init for ", _Symbol);
       return INIT_FAILED;
    }
 
-   // Initialize CTrade (AP-15 fix)
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints((ulong)((_Digits == 5 || _Digits == 3) ? 30 : 3));
    trade.SetTypeFilling(ORDER_FILLING_RETURN);
 
-   // Initialize CSpreadGuard (AP-8 fix)
    spreadGuard.Init(pip, MaxSpreadPips);
-
-   // Initialize CMfeMaeLogger (AP-14 fix)
    mfeLogger.Init("ThanosEA_mfe_mae.csv");
-
-   // Initialize CRiskGuard
    riskGuard.Init(DailyLossPct, MaxOpenPositions, FreezeOnDDPct);
 
-   // Cache broker info
    accountCurrency = " " + AccountInfoString(ACCOUNT_CURRENCY);
    SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE, tickValue);
    trailingTF = NextHigherTF(TrailingTimeframe);
    slippage = (_Digits == 5 || _Digits == 3) ? 30 : 3;
    stopsLevelPoints = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
 
-   // Validate grid parameters against broker stops level
-   gridDistance = DistBetweenOrdersPips;
-   if((int)(pip.Pips(gridDistance) / pip.Point()) < stopsLevelPoints) {
-      int minPips = pip.ClampSLPips(gridDistance);
-      Alert("DistBetweenOrdersPips < STOPLEVEL, adjusted to ", minPips);
-      gridDistance = minPips;
-   }
-   gridFirstStep = FirstStepPips;
-   if((int)(pip.Pips(gridFirstStep) / pip.Point()) < stopsLevelPoints) {
-      int minPips = pip.ClampSLPips(gridFirstStep);
-      Alert("FirstStepPips < STOPLEVEL, adjusted to ", minPips);
-      gridFirstStep = minPips;
+   emaHandle = iMA(_Symbol, EmaTimeframe, EmaPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   if(emaHandle == INVALID_HANDLE) {
+      Alert("Failed to create EMA indicator");
+      return INIT_FAILED;
    }
 
-   // Same-bar guard init (AP-9 fix)
    lastBarCount = Bars(_Symbol, _Period);
+   dailyClosedProfit = 0.0;
+   dailyTpReached = false;
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   dailyTpDay = dt.day;
 
-   // Setup chart labels
    int yPos = FontSize + FontSize / 2;
    SetChartLabel("Balance",    "", 5, yPos, InfoColor); yPos += FontSize * 2;
    SetChartLabel("Equity",     "", 5, yPos, InfoColor); yPos += FontSize * 2;
@@ -457,7 +541,9 @@ int OnInit() {
    SetChartLabel("ProfitB",    "", 5, yPos, InfoColor); yPos += FontSize * 2;
    SetChartLabel("ProfitS",    "", 5, yPos, InfoColor); yPos += FontSize * 2;
    SetChartLabel("Profit",     "", 5, yPos, InfoColor); yPos += FontSize * 3;
-   SetChartLabel("ParamHeader", "── Thanos EA Parameters ──", 5, yPos, clrAqua);
+   SetChartLabel("EMAInfo",    "", 5, yPos, InfoColor); yPos += FontSize * 2;
+   SetChartLabel("DailyPL",    "", 5, yPos, InfoColor); yPos += FontSize * 2;
+   SetChartLabel("ParamHeader", "── Thanos EA v2.1 ──", 5, yPos, clrAqua);
    yPos += FontSize * 2;
 
    string dirText = "";
@@ -465,25 +551,16 @@ int OnInit() {
    if(AllowSell) dirText += "Sell";
    SetChartLabel("ParamDir", "Allowed: " + dirText, 5, yPos, InfoColor);
    yPos += FontSize * 2;
-
-   if(!OpenOrderOnTrend)
-      SetChartLabel("ParamTrend", "Do not open orders on trend", 5, yPos, InfoColor);
+   SetChartLabel("ParamEMA",     StringFormat("EMA(%d) range ± %d pts", EmaPeriod, EmaRangePoints), 5, yPos, InfoColor);
    yPos += FontSize * 2;
-
-   SetChartLabel("ParamFirst",   StringFormat("First step %d pips", gridFirstStep), 5, yPos, InfoColor);
+   SetChartLabel("ParamDCA",     StringFormat("DCA step %d pips, mult %.2f", DcaStepPips, LotMultiplier), 5, yPos, InfoColor);
    yPos += FontSize * 2;
-   SetChartLabel("ParamMinDist", StringFormat("Min price distance %d pips", MinPriceDistancePips), 5, yPos, InfoColor);
-   yPos += FontSize * 2;
-   SetChartLabel("ParamMove",    StringFormat("Move step %d pips", MoveStepPips), 5, yPos, InfoColor);
-   yPos += FontSize * 2;
-   SetChartLabel("ParamGrid",    StringFormat("Grid distance %d pips", gridDistance), 5, yPos, InfoColor);
-   yPos += FontSize * 2;
-   SetChartLabel("ParamLot",     StringFormat("Start lot %.2f + %.2f x %.2f", StartLot, LotIncrement, LotMultiplier), 5, yPos, InfoColor);
+   SetChartLabel("ParamLot",     StringFormat("Start lot %.2f", StartLot), 5, yPos, InfoColor);
    yPos += FontSize * 2;
    SetChartLabel("ParamMode",    StringFormat("Account: %s", isHedging ? "Hedging" : "Netting (WARNING)"), 5, yPos,
                  isHedging ? InfoColor : clrRed);
 
-   Comment("Thanos EA Grid");
+   Comment("Thanos EA Grid DCA v2.1");
    return INIT_SUCCEEDED;
 }
 
@@ -491,6 +568,7 @@ int OnInit() {
 //| OnDeinit                                                          |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason) {
+   if(emaHandle != INVALID_HANDLE) IndicatorRelease(emaHandle);
    ObjectsDeleteAll(0, 0, -1);
 }
 
@@ -507,34 +585,38 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 //| OnTick                                                            |
 //+------------------------------------------------------------------+
 void OnTick() {
-   // Risk guard tick
    riskGuard.OnTick();
    mfeLogger.OnTick();
 
+   // Daily TP reset on new day
    MqlDateTime dt;
    TimeToStruct(TimeCurrent(), dt);
+   if(dt.day != dailyTpDay) {
+      dailyTpDay = dt.day;
+      dailyClosedProfit = 0.0;
+      dailyTpReached = false;
+   }
+
    if(DeleteOrdersAtHour && dt.hour == DeleteHour)
       DeleteAllPendingOrders();
 
-   // Negate thresholds for comparison
-   double drawdownLimit    = -1.0 * CloseLossByDrawdown;
-   double maxAllowedLossNeg = -1.0 * MaxAllowedLoss;
-   double lossCloseNeg     = -1.0 * LossCloseThreshold;
+   // Check daily TP
+   if(dailyTpReached) {
+      Comment("Daily TP reached — trading paused until next day");
+      return;
+   }
 
    double Bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double Ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double emaValue = GetEMA();
 
    // Position/order tracking
    int    buyCount = 0, sellCount = 0;
-   int    buyStopCount = 0, sellStopCount = 0;
    double buyLots = 0, sellLots = 0;
    double buyProfit = 0, sellProfit = 0;
    double buyWeightedPrice = 0, sellWeightedPrice = 0;
    double buyHighPrice = 0, buyLowPrice = 0;
    double sellHighPrice = 0, sellLowPrice = 0;
-   int    lastBuyStopTicket = 0, lastSellStopTicket = 0;
-   double lastBuyStopPrice = 0, lastSellStopPrice = 0;
-   double slNew = 0, tpNew = 0;
 
    // Scan open positions
    for(int i = 0; i < PositionsTotal(); i++) {
@@ -546,8 +628,6 @@ void OnTick() {
       ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
       double lots     = PositionGetDouble(POSITION_VOLUME);
       double openPrice = NormalizeDouble(PositionGetDouble(POSITION_PRICE_OPEN), _Digits);
-      double sl       = NormalizeDouble(PositionGetDouble(POSITION_SL), _Digits);
-      double tp       = NormalizeDouble(PositionGetDouble(POSITION_TP), _Digits);
       double posProfit = PositionGetDouble(POSITION_PROFIT);
 
       if(ptype == POSITION_TYPE_BUY) {
@@ -557,16 +637,6 @@ void OnTick() {
          if(buyHighPrice < openPrice || buyHighPrice == 0.0) buyHighPrice = openPrice;
          if(buyLowPrice > openPrice || buyLowPrice == 0.0) buyLowPrice = openPrice;
          buyProfit += posProfit;
-
-         // Auto-set SL/TP if missing
-         slNew = sl; tpNew = tp;
-         if(sl == 0.0 && StoplossPips > 0 && pip.IsValidSLDistance(StoplossPips))
-            slNew = NormalizeDouble(openPrice - pip.Pips(StoplossPips), _Digits);
-         if(tp == 0.0 && TakeprofitPips > 0 && pip.IsValidSLDistance(TakeprofitPips))
-            tpNew = NormalizeDouble(openPrice + pip.Pips(TakeprofitPips), _Digits);
-         if(slNew > sl || tpNew != tp)
-            trade.PositionModify(ticket, slNew, tpNew);
-
       } else if(ptype == POSITION_TYPE_SELL) {
          sellCount++;
          sellLots += lots;
@@ -574,37 +644,6 @@ void OnTick() {
          if(sellLowPrice > openPrice || sellLowPrice == 0.0) sellLowPrice = openPrice;
          if(sellHighPrice < openPrice || sellHighPrice == 0.0) sellHighPrice = openPrice;
          sellProfit += posProfit;
-
-         slNew = sl; tpNew = tp;
-         if(sl == 0.0 && StoplossPips > 0 && pip.IsValidSLDistance(StoplossPips))
-            slNew = NormalizeDouble(openPrice + pip.Pips(StoplossPips), _Digits);
-         if(tp == 0.0 && TakeprofitPips > 0 && pip.IsValidSLDistance(TakeprofitPips))
-            tpNew = NormalizeDouble(openPrice - pip.Pips(TakeprofitPips), _Digits);
-         if(slNew < sl || (sl == 0.0 && slNew != 0.0) || tpNew != tp)
-            trade.PositionModify(ticket, slNew, tpNew);
-      }
-   }
-
-   // Scan pending orders
-   for(int i = 0; i < OrdersTotal(); i++) {
-      ulong ticket = OrderGetTicket(i);
-      if(ticket == 0) continue;
-      if(OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
-      if(OrderGetInteger(ORDER_MAGIC) != MagicNumber) continue;
-
-      ENUM_ORDER_TYPE ot = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
-      double price = NormalizeDouble(OrderGetDouble(ORDER_PRICE_OPEN), _Digits);
-
-      if(ot == ORDER_TYPE_BUY_STOP) {
-         buyStopCount++;
-         if(buyHighPrice < price || buyHighPrice == 0.0) buyHighPrice = price;
-         lastBuyStopTicket = (int)ticket;
-         lastBuyStopPrice = price;
-      } else if(ot == ORDER_TYPE_SELL_STOP) {
-         sellStopCount++;
-         if(sellLowPrice > price || sellLowPrice == 0.0) sellLowPrice = price;
-         lastSellStopTicket = (int)ticket;
-         lastSellStopPrice = price;
       }
    }
 
@@ -619,6 +658,38 @@ void OnTick() {
    if(sellCount > 0) {
       sellAvgPrice = NormalizeDouble(sellWeightedPrice / sellLots, _Digits);
       DrawArrow("SLs", sellAvgPrice, ARROW_RIGHT_PRICE, clrRed);
+   }
+
+   // Set TP from BE for buy series
+   if(buyCount > 0 && TpFromBEPips > 0) {
+      double buyBE = buyAvgPrice;
+      double buyTP = NormalizeDouble(buyBE + pip.Pips(TpFromBEPips), _Digits);
+      for(int i = 0; i < PositionsTotal(); i++) {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket == 0) continue;
+         if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+         if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+         if((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != POSITION_TYPE_BUY) continue;
+         double currentTP = NormalizeDouble(PositionGetDouble(POSITION_TP), _Digits);
+         if(currentTP != buyTP)
+            trade.PositionModify(ticket, PositionGetDouble(POSITION_SL), buyTP);
+      }
+   }
+
+   // Set TP from BE for sell series
+   if(sellCount > 0 && TpFromBEPips > 0) {
+      double sellBE = sellAvgPrice;
+      double sellTP = NormalizeDouble(sellBE - pip.Pips(TpFromBEPips), _Digits);
+      for(int i = 0; i < PositionsTotal(); i++) {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket == 0) continue;
+         if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+         if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+         if((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != POSITION_TYPE_SELL) continue;
+         double currentTP = NormalizeDouble(PositionGetDouble(POSITION_TP), _Digits);
+         if(currentTP != sellTP)
+            trade.PositionModify(ticket, PositionGetDouble(POSITION_SL), sellTP);
+      }
    }
 
    // Trailing stop logic
@@ -652,144 +723,136 @@ void OnTick() {
       }
    }
 
-   // Auto-calculated profit per direction
-   double buyTargetProfit = 0, sellTargetProfit = 0;
-   if(AutoCalcProfitMultiplier == 0) {
-      buyTargetProfit = ProfitCloseOneDirection;
-      sellTargetProfit = ProfitCloseOneDirection;
-   } else {
-      buyTargetProfit  = (buyLots == 0.0 ? StartLot : buyLots) * AutoCalcProfitMultiplier * tickValue;
-      sellTargetProfit = (sellLots == 0.0 ? StartLot : sellLots) * AutoCalcProfitMultiplier * tickValue;
-      SetChartLabel("AutoProfitBuy",  StringFormat("Auto Profit Buy %.2f", buyTargetProfit), 5, 0, InfoColor);
-      SetChartLabel("AutoProfitSell", StringFormat("Auto Profit Sell %.2f", sellTargetProfit), 5, 0, InfoColor);
-   }
-
-   // Profit/loss closing logic
-   if(buyProfit > drawdownLimit && sellProfit > drawdownLimit) {
-      if(buyProfit >= buyTargetProfit) {
-         Print("Closure of Buy on Profit ", buyProfit);
-         ClosePositionsByDirection(1);
-         return;
+   // Close-all on profit target ($)
+   double totalProfit = buyProfit + sellProfit;
+   if(CloseAllProfit > 0 && totalProfit >= CloseAllProfit) {
+      Print("Close ALL on profit target: ", totalProfit);
+      ClosePositionsByDirection(0);
+      if(dailyClosedProfit >= DailyTpTarget && DailyTpTarget > 0) {
+         dailyTpReached = true;
+         Print("Daily TP target reached: ", dailyClosedProfit);
       }
-      if(sellProfit >= sellTargetProfit) {
-         Print("Closure of Sell on Profit ", sellProfit);
-         ClosePositionsByDirection(-1);
-         return;
-      }
-   } else {
-      if(buyProfit + sellProfit >= ProfitCloseAllDirections) {
-         Print("Closing all orders in 2 directions ", buyProfit + sellProfit);
-         ClosePositionsByDirection(0);
-         return;
-      }
-   }
-   if(buyProfit <= lossCloseNeg) {
-      Print("Closure of Buy on Loss ", buyProfit);
-      ClosePositionsByDirection(1);
-      return;
-   }
-   if(sellProfit <= lossCloseNeg) {
-      Print("Closure of Sell on Loss ", sellProfit);
-      ClosePositionsByDirection(-1);
       return;
    }
 
-   // AP-9: Same-bar guard — only open new pending orders on new bar
+   // Check daily TP after close-all
+   if(dailyClosedProfit >= DailyTpTarget && DailyTpTarget > 0) {
+      dailyTpReached = true;
+      Print("Daily TP target reached: ", dailyClosedProfit);
+      return;
+   }
+
+   // Hedge trimming
+   if(EnableTrimFarthest) {
+      if(buyCount >= 2) TrimPair(1, true);
+      if(sellCount >= 2) TrimPair(-1, true);
+   }
+   if(EnableTrimMostLoss) {
+      if(buyCount >= 2) TrimPair(1, false);
+      if(sellCount >= 2) TrimPair(-1, false);
+   }
+
+   // AP-9: Same-bar guard
    long currentBars = Bars(_Symbol, _Period);
    bool isNewBar = (currentBars != lastBarCount);
    if(isNewBar) lastBarCount = currentBars;
 
    // AP-8: Spread guard
    bool spreadOK = spreadGuard.IsTradable();
-
-   // Risk guard check
    bool riskOK = riskGuard.CanOpenNewPosition();
 
-   // RSI for first entries
-   double rsiValue = 0;
-   if(buyCount == 0 || sellCount == 0) {
-      ENUM_TIMEFRAMES rsiTF = TFFromMinutes(RSITimeframe == 0 ? (int)Period() : RSITimeframe);
-      rsiValue = GetRSI(_Symbol, rsiTF, RSIPeriod, PRICE_CLOSE, 0);
-   }
+   // EMA range entry logic
+   double emaUpper = emaValue + pip.Pips(EmaRangePoints);
+   double emaLower = emaValue - pip.Pips(EmaRangePoints);
+   bool priceAboveRange = (Bid > emaUpper);
+   bool priceBelowRange = (Ask < emaLower);
 
-   // Open BuyStop
-   double pendingPrice = 0;
-   if(buyStopCount == 0 && buyProfit > maxAllowedLossNeg && AllowBuy && spreadOK && riskOK) {
+   // Draw EMA range lines
+   DrawArrow("EMA_Upper", emaUpper, 4, clrYellow);
+   DrawArrow("EMA_Lower", emaLower, 4, clrYellow);
+   DrawArrow("EMA_Line", emaValue, 4, clrAqua);
+
+   // DCA: open BUY when price below EMA - range
+   if(AllowBuy && spreadOK && riskOK && isNewBar && !dailyTpReached) {
       if(buyCount == 0) {
-         bool rsiPass = !UseRSIFilter || (rsiValue < RSIOversold);
-         if(rsiPass && isNewBar)
-            pendingPrice = NormalizeDouble(Ask + pip.Pips(gridFirstStep), _Digits);
-      } else {
-         pendingPrice = NormalizeDouble(Ask + pip.Pips(MinPriceDistancePips), _Digits);
-         double gridLow = NormalizeDouble(buyLowPrice - pip.Pips(gridDistance), _Digits);
-         if(pendingPrice < gridLow)
-            pendingPrice = NormalizeDouble(Ask + pip.Pips(gridDistance), _Digits);
-      }
-      if(pendingPrice != 0.0 &&
-         (buyCount == 0 ||
-          (buyHighPrice != 0.0 && pendingPrice >= NormalizeDouble(buyHighPrice + pip.Pips(gridDistance), _Digits) && OpenOrderOnTrend) ||
-          (buyLowPrice != 0.0 && pendingPrice <= NormalizeDouble(buyLowPrice - pip.Pips(gridDistance), _Digits)))) {
-         double lot = CalcNextLot(buyCount);
-         double margin = 0;
-         if(OrderCalcMargin(ORDER_TYPE_BUY, _Symbol, lot, Ask, margin) && margin > 0) {
-            if((margin <= AccountInfoDouble(ACCOUNT_MARGIN_FREE) && buyCount > 0) || EAMakesFirstOrder) {
-               if(IsTradingHours()) {
-                  if(!trade.BuyStop(lot, pendingPrice, _Symbol))
-                     PrintFormat("Failed BuyStop: Lot=%.2f Price=%.5f Ask=%.5f", lot, pendingPrice, Ask);
-               } else {
-                  Comment("BuyStop blocked — outside trading hours");
+         if(priceBelowRange && EAMakesFirstOrder) {
+            double lot = CalcNextLot(0);
+            double margin = 0;
+            if(OrderCalcMargin(ORDER_TYPE_BUY, _Symbol, lot, Ask, margin) && margin > 0) {
+               if(margin <= AccountInfoDouble(ACCOUNT_MARGIN_FREE)) {
+                  if(IsTradingHours()) {
+                     double buySL = CalcProtectiveSL(1, Ask);
+                     if(!trade.Buy(lot, _Symbol, Ask, buySL, 0, "ThanosEA Buy"))
+                        PrintFormat("Failed Buy: Lot=%.2f Ask=%.5f", lot, Ask);
+                  }
                }
-            } else Comment(StringFormat("Insufficient margin for Lot %.2f", lot));
+            }
+         }
+      } else {
+         double lastBuyPrice = buyLowPrice;
+         if(Ask <= NormalizeDouble(lastBuyPrice - pip.Pips(DcaStepPips), _Digits)) {
+            double lot = CalcNextLot(buyCount);
+            double margin = 0;
+            if(OrderCalcMargin(ORDER_TYPE_BUY, _Symbol, lot, Ask, margin) && margin > 0) {
+               if(margin <= AccountInfoDouble(ACCOUNT_MARGIN_FREE)) {
+                  if(IsTradingHours()) {
+                     double dcaBuySL = CalcProtectiveSL(1, Ask);
+                     if(!trade.Buy(lot, _Symbol, Ask, dcaBuySL, 0, "ThanosEA DCA Buy"))
+                        PrintFormat("Failed DCA Buy #%d: Lot=%.2f Ask=%.5f", buyCount + 1, lot, Ask);
+                  }
+               }
+            }
          }
       }
    }
 
-   // Open SellStop
-   pendingPrice = 0;
-   if(sellStopCount == 0 && sellProfit > maxAllowedLossNeg && AllowSell && spreadOK && riskOK) {
+   // DCA: open SELL when price above EMA + range
+   if(AllowSell && spreadOK && riskOK && isNewBar && !dailyTpReached) {
       if(sellCount == 0) {
-         bool rsiPass = !UseRSIFilter || (rsiValue > RSIOverbought);
-         if(rsiPass && isNewBar)
-            pendingPrice = NormalizeDouble(Bid - pip.Pips(gridFirstStep), _Digits);
-      } else {
-         pendingPrice = NormalizeDouble(Bid - pip.Pips(MinPriceDistancePips), _Digits);
-         double gridHigh = NormalizeDouble(sellHighPrice + pip.Pips(gridDistance), _Digits);
-         if(pendingPrice < gridHigh)
-            pendingPrice = NormalizeDouble(Bid - pip.Pips(gridDistance), _Digits);
-      }
-      if(pendingPrice != 0.0 &&
-         (sellCount == 0 ||
-          (sellLowPrice != 0.0 && pendingPrice <= NormalizeDouble(sellLowPrice - pip.Pips(gridDistance), _Digits) && OpenOrderOnTrend) ||
-          (sellHighPrice != 0.0 && pendingPrice >= NormalizeDouble(sellHighPrice + pip.Pips(gridDistance), _Digits)))) {
-         double lot = CalcNextLot(sellCount);
-         double margin = 0;
-         if(OrderCalcMargin(ORDER_TYPE_SELL, _Symbol, lot, Bid, margin) && margin > 0) {
-            if((margin <= AccountInfoDouble(ACCOUNT_MARGIN_FREE) && sellCount > 0) || EAMakesFirstOrder) {
-               if(IsTradingHours()) {
-                  if(!trade.SellStop(lot, pendingPrice, _Symbol))
-                     PrintFormat("Failed SellStop: Lot=%.2f Price=%.5f Bid=%.5f", lot, pendingPrice, Bid);
-               } else {
-                  Comment("SellStop blocked — outside trading hours");
+         if(priceAboveRange && EAMakesFirstOrder) {
+            double lot = CalcNextLot(0);
+            double margin = 0;
+            if(OrderCalcMargin(ORDER_TYPE_SELL, _Symbol, lot, Bid, margin) && margin > 0) {
+               if(margin <= AccountInfoDouble(ACCOUNT_MARGIN_FREE)) {
+                  if(IsTradingHours()) {
+                     double sellSL = CalcProtectiveSL(-1, Bid);
+                     if(!trade.Sell(lot, _Symbol, Bid, sellSL, 0, "ThanosEA Sell"))
+                        PrintFormat("Failed Sell: Lot=%.2f Bid=%.5f", lot, Bid);
+                  }
                }
-            } else Comment(StringFormat("Insufficient margin for Lot %.2f", lot));
+            }
+         }
+      } else {
+         double lastSellPrice = sellHighPrice;
+         if(Bid >= NormalizeDouble(lastSellPrice + pip.Pips(DcaStepPips), _Digits)) {
+            double lot = CalcNextLot(sellCount);
+            double margin = 0;
+            if(OrderCalcMargin(ORDER_TYPE_SELL, _Symbol, lot, Bid, margin) && margin > 0) {
+               if(margin <= AccountInfoDouble(ACCOUNT_MARGIN_FREE)) {
+                  if(IsTradingHours()) {
+                     double dcaSellSL = CalcProtectiveSL(-1, Bid);
+                     if(!trade.Sell(lot, _Symbol, Bid, dcaSellSL, 0, "ThanosEA DCA Sell"))
+                        PrintFormat("Failed DCA Sell #%d: Lot=%.2f Bid=%.5f", sellCount + 1, lot, Bid);
+                  }
+               }
+            }
          }
       }
    }
 
    // Update info labels
-   double totalProfit = buyProfit + sellProfit;
    SetChartLabel("Balance",    StringFormat("Balance %.2f", AccountInfoDouble(ACCOUNT_BALANCE)), 5, 0, InfoColor);
    SetChartLabel("Equity",     StringFormat("Equity %.2f", AccountInfoDouble(ACCOUNT_EQUITY)), 5, 0, InfoColor);
    SetChartLabel("FreeMargin", StringFormat("Free Margin %.2f", AccountInfoDouble(ACCOUNT_MARGIN_FREE)), 5, 0, InfoColor);
 
    if(buyLots > 0.0)
-      SetChartLabel("ProfitB", StringFormat("Buy %d  Profit %.2f  Lot=%.2f", buyCount, buyProfit, buyLots), 5, 0,
+      SetChartLabel("ProfitB", StringFormat("Buy %d  Profit %.2f  Lot=%.2f  BE=%.5f", buyCount, buyProfit, buyLots, buyAvgPrice), 5, 0,
                     buyProfit > 0 ? clrLime : clrRed);
    else
       SetChartLabel("ProfitB", "", 5, 0, clrGray);
 
    if(sellLots > 0.0)
-      SetChartLabel("ProfitS", StringFormat("Sell %d  Profit %.2f  Lot=%.2f", sellCount, sellProfit, sellLots), 5, 0,
+      SetChartLabel("ProfitS", StringFormat("Sell %d  Profit %.2f  Lot=%.2f  BE=%.5f", sellCount, sellProfit, sellLots, sellAvgPrice), 5, 0,
                     sellProfit > 0 ? clrLime : clrRed);
    else
       SetChartLabel("ProfitS", "", 5, 0, clrGray);
@@ -800,38 +863,11 @@ void OnTick() {
    else
       SetChartLabel("Profit", "", 5, 0, clrGray);
 
-   // Move existing pending orders closer to price
-   if(lastBuyStopPrice != 0.0 && AllowBuy && lastBuyStopTicket > 0) {
-      double targetPrice;
-      if(buyCount == 0) targetPrice = NormalizeDouble(Ask + pip.Pips(gridFirstStep), _Digits);
-      else              targetPrice = NormalizeDouble(Ask + pip.Pips(MinPriceDistancePips), _Digits);
+   if(emaValue > 0)
+      SetChartLabel("EMAInfo", StringFormat("EMA(%d)=%.5f  Range: %.5f — %.5f", EmaPeriod, emaValue, emaLower, emaUpper), 5, 0, clrAqua);
 
-      if(NormalizeDouble(lastBuyStopPrice - pip.Pips(MoveStepPips), _Digits) > targetPrice &&
-         (targetPrice <= NormalizeDouble(buyLowPrice - pip.Pips(gridDistance), _Digits) || buyLowPrice == 0.0 ||
-          (OpenOrderOnTrend && buyCount == 0) ||
-          targetPrice >= NormalizeDouble(buyHighPrice + pip.Pips(gridDistance), _Digits) ||
-          targetPrice <= NormalizeDouble(buyLowPrice - pip.Pips(gridDistance), _Digits))) {
-         if(!trade.OrderModify(lastBuyStopTicket, targetPrice, 0, 0, ORDER_TIME_GTC, 0))
-            PrintFormat("Error Modify BuyStop %.5f -> %.5f", lastBuyStopPrice, targetPrice);
-         else
-            PrintFormat("BuyStop Modified %.5f -> %.5f", lastBuyStopPrice, targetPrice);
-      }
-   }
-   if(lastSellStopPrice != 0.0 && AllowSell && lastSellStopTicket > 0) {
-      double targetPrice;
-      if(sellCount == 0) targetPrice = NormalizeDouble(Bid - pip.Pips(gridFirstStep), _Digits);
-      else               targetPrice = NormalizeDouble(Bid - pip.Pips(MinPriceDistancePips), _Digits);
-
-      if(NormalizeDouble(lastSellStopPrice + pip.Pips(MoveStepPips), _Digits) < targetPrice &&
-         (targetPrice >= NormalizeDouble(sellHighPrice + pip.Pips(gridDistance), _Digits) || sellHighPrice == 0.0 ||
-          (OpenOrderOnTrend && sellCount == 0) ||
-          targetPrice <= NormalizeDouble(sellLowPrice - pip.Pips(gridDistance), _Digits) ||
-          targetPrice >= NormalizeDouble(sellHighPrice + pip.Pips(gridDistance), _Digits))) {
-         if(!trade.OrderModify(lastSellStopTicket, targetPrice, 0, 0, ORDER_TIME_GTC, 0))
-            PrintFormat("Error Modify SellStop %.5f -> %.5f", lastSellStopPrice, targetPrice);
-         else
-            PrintFormat("SellStop Modified %.5f -> %.5f", lastSellStopPrice, targetPrice);
-      }
-   }
+   SetChartLabel("DailyPL", StringFormat("Daily P/L: %.2f / %.2f%s",
+                 dailyClosedProfit, DailyTpTarget,
+                 dailyTpReached ? " [PAUSED]" : ""), 5, 0,
+                 dailyTpReached ? clrOrange : InfoColor);
 }
-//+------------------------------------------------------------------+
