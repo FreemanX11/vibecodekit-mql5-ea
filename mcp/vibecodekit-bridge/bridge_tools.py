@@ -55,8 +55,10 @@ from vibecodekit_mql5 import (
     trader_check as trader_check_mod,
     walkforward as walkforward_mod,
 )
+from vibecodekit_mql5 import auto_build_docs_stage as auto_build_docs_stage_mod
 from vibecodekit_mql5 import build as build_mod
 from vibecodekit_mql5 import dashboard as dashboard_mod
+from vibecodekit_mql5 import ea_docs as ea_docs_mod
 from vibecodekit_mql5 import forge_pr as forge_pr_mod
 from vibecodekit_mql5.permission import orchestrator as orch_mod
 from vibecodekit_mql5.review import (
@@ -695,6 +697,54 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 },
             },
             "required": ["mq5_path", "pattern"],
+        },
+    },
+    {
+        "name": "docs.ea_render",
+        "description": (
+            "Render the EA docs (Neo-Retro Dev Deck) for a validated spec "
+            "+ MQL5 source. Vietnamese is the project default (lang='vi'); "
+            "'en' opts back to English. Writes <EAName>.docs.{html,md,pdf} "
+            "into 'out_dir' and returns the resolved file paths. Pass "
+            "either 'mq5_source' (in-memory text) or 'mq5_path' (file on "
+            "disk) \u2014 at least one is required. 'formats' defaults to "
+            "['html','md']; include 'pdf' for headless-Chrome export. "
+            "PDF gracefully falls back when no Chrome binary is found and "
+            "the missing-Chrome reason is reported in 'pdf_error'."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "spec": {
+                    "type": "object",
+                    "description": "Parsed EA spec dict (see spec_schema.py).",
+                },
+                "out_dir": {
+                    "type": "string",
+                    "description": "Directory the .docs.{html,md,pdf} files are written into.",
+                },
+                "mq5_source": {
+                    "type": "string",
+                    "description": "In-memory MQL5 source. Use this when the EA has not been written to disk yet.",
+                },
+                "mq5_path": {
+                    "type": "string",
+                    "description": "Path to a .mq5 file on disk. Used when 'mq5_source' is not provided.",
+                },
+                "lang": {
+                    "type": "string",
+                    "enum": ["vi", "en"],
+                    "default": "vi",
+                    "description": "Output language. Project default is Vietnamese.",
+                },
+                "formats": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["html", "md", "pdf"]},
+                    "default": ["html", "md"],
+                    "description": "Which output formats to render.",
+                },
+            },
+            "required": ["spec", "out_dir"],
         },
     },
     {
@@ -1381,6 +1431,64 @@ def _tool_verify_auto_fix(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _tool_docs_ea_render(args: dict[str, Any]) -> dict[str, Any]:
+    """Render the Neo-Retro EA docs for one validated spec (PR-19).
+
+    Thin shim over ``auto_build_docs_stage.write_docs_to_disk``: validates
+    the spec the same way ``build.auto`` does, resolves the MQL5 source
+    from either ``mq5_source`` (in-memory) or ``mq5_path`` (file on
+    disk), and forwards to the shared renderer so the on-disk artifacts
+    are byte-identical to what the pipeline stage produces.
+    """
+    spec = args["spec"]
+    out_dir = Path(args["out_dir"]).resolve()
+    mq5_source = args.get("mq5_source", "")
+    mq5_path_arg = args.get("mq5_path", "")
+
+    # Resolve MQL5 text. Prefer in-memory source so callers don't need
+    # a real file on disk; fall back to reading from path.
+    if mq5_source:
+        mq5_text = mq5_source
+    elif mq5_path_arg:
+        try:
+            mq5_text = Path(mq5_path_arg).read_text(
+                encoding="utf-8", errors="replace",
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "error": f"failed to read mq5_path: {exc}",
+            }
+    else:
+        return {
+            "ok": False,
+            "error": "either 'mq5_source' or 'mq5_path' must be provided",
+        }
+
+    try:
+        ea = spec_schema.validate(spec, valid_presets=build_mod.PRESETS)
+    except spec_schema.SpecValidationError as exc:
+        return {
+            "ok": False,
+            "stage": "validate",
+            "errors": str(exc).split("; "),
+        }
+
+    lang = str(args.get("lang", "vi"))
+    formats_in = args.get("formats", ("html", "md"))
+    formats: tuple[str, ...] = tuple(formats_in) if formats_in else ("html", "md")
+
+    build_meta = ea_docs_mod.BuildMeta.now(
+        ea_version=str(spec.get("version", "0.1.0")),
+        kit_version=ea_docs_mod._kit_version(),
+        built_from=str(spec.get("name", ea.name)),
+    )
+    return auto_build_docs_stage_mod.write_docs_to_disk(
+        ea, mq5_text, out_dir,
+        lang=lang, formats=formats, build_meta=build_meta,
+    )
+
+
 DISPATCH = {
     "spec.from_prompt":         _tool_spec_from_prompt,
     "spec.validate":            _tool_spec_validate,
@@ -1411,4 +1519,5 @@ DISPATCH = {
     "discover.doctor":          _tool_discover_doctor,
     "discover.scan":            _tool_discover_scan,
     "discover.llm_context":     _tool_discover_llm_context,
+    "docs.ea_render":           _tool_docs_ea_render,
 }

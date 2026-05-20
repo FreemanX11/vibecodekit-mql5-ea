@@ -8,7 +8,7 @@ This is the 4th MCP server in the kit, joining `metaeditor-bridge`,
 `mt5-bridge`, and `algo-forge-bridge`. Same wire format — same
 `initialize` / `tools/list` / `tools/call` envelope.
 
-## Tool set (25)
+## Tool set (30)
 
 ### PR-1: prompt → spec → build → permission-gate (4 tools)
 
@@ -102,9 +102,15 @@ Wine / no network).
 | `discover.llm_context` | `vibecodekit_mql5.llm_context.wire_llm` | Wire one of the 3 LLM-bridge scaffold patterns (`cloud-api`, `self-hosted-ollama`, `embedded-onnx-llm`) into an existing EA `.mq5` — adds the right `#include` / global instance / `OnInit()` init call. Mutates the file in place. |
 | `verify.auto_fix` | `vibecodekit_mql5.auto_fix.fix_source` | Run the AP auto-fixer over an EA source. Pass `path` (file is rewritten) or `source` (in-memory). Returns `{ok, path, wrote_changes, mutations, annotations, findings_before, findings_after, fixed_text}`. Designed to chain with `verify.lint`: lint → see findings → auto_fix → lint again. |
 
-All six plan-β rút gọn milestones (PR-1 → PR-5, then PR-7) are now
-in `DISPATCH`. The wire format is unchanged across all of them and
-stays stable for future extensions.
+### PR-19: EA docs renderer (1 tool)
+
+| Tool | Wraps | One-line purpose |
+|------|-------|------------------|
+| `docs.ea_render` | `vibecodekit_mql5.auto_build_docs_stage.write_docs_to_disk` | Render `<EAName>.docs.{html,md,pdf}` (Neo-Retro Dev Deck) for a validated spec + MQL5 source. Vietnamese default (`lang="vi"`); `lang="en"` opts back to English. Accept either `mq5_source` (in-memory) or `mq5_path`. PDF requires headless Chrome — falls back gracefully and reports the reason in `pdf_error`. |
+
+All seven plan-β rút gọn milestones (PR-1 → PR-5, then PR-7, then
+PR-19) are now in `DISPATCH`. The wire format is unchanged across
+all of them and stays stable for future extensions.
 
 ## Launch directly
 
