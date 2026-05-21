@@ -8,6 +8,8 @@
 //| OrderSendAsync HFT shell with paired OnTradeTransaction reconciler|
 //| (AP-18 compliant — async without handler is a critical error).    |
 //|                                                                   |
+//| v2: async open + close, stale cleanup, retry on reject, stats.   |
+//|                                                                   |
 //| Starter signal: tick-rate gate + tick-by-tick momentum filter.    |
 //| Replace IsBuySignal() / IsSellSignal() with your edge once the     |
 //| infrastructure is validated on demo.                              |
@@ -15,7 +17,7 @@
 //| digits-tested: 5, 3                                                |
 //+------------------------------------------------------------------+
 #property copyright "vibecodekit-mql5-ea"
-#property version   "1.00"
+#property version   "2.00"
 #property strict
 
 #include "CPipNormalizer.mqh"
@@ -32,6 +34,8 @@ input int    InpMaxPositions = 5;
 
 sinput int InpMinTicksPerSec   = 5;     // minimum tick rate to consider the book "hot"
 sinput int InpMaxPendingAsync  = 3;     // backpressure on un-reconciled requests
+sinput int InpMaxRetries       = 2;     // retry attempts on requote/reject
+sinput int InpStaleTimeoutSec  = 5;     // stale pending cleanup threshold
 
 CPipNormalizer    pip;
 CRiskGuard        risk;
@@ -42,14 +46,18 @@ int OnInit(void)
   {
    if(!pip.Init(_Symbol)) return INIT_FAILED;
    risk.Init(InpDailyLossPct, InpMaxPositions, 0.10);
-   async_tm.Init((ulong)InpMagic);
+   async_tm.Init((ulong)InpMagic, InpMaxRetries,
+                 (ulong)InpStaleTimeoutSec * 1000000);
    if(!registry.Check(InpMagic))
       registry.Reserve(InpMagic, "{{NAME}}");
-   Print("{{NAME}} HFT initialized; magic=", InpMagic);
+   Print("{{NAME}} HFT v2 initialized; magic=", InpMagic);
    return INIT_SUCCEEDED;
   }
 
-void OnDeinit(const int reason) {}
+void OnDeinit(const int reason)
+  {
+   async_tm.PrintStats();
+  }
 
 // Starter signal: same-tick momentum. Long if last tick lifted ask; short
 // if it pushed bid lower. Replace with your edge.
@@ -59,6 +67,8 @@ bool IsSellSignal(double prev_bid, double bid) { return bid < prev_bid; }
 void OnTick(void)
   {
    risk.OnTick();
+   async_tm.CleanupStale();
+
    if(!risk.CanOpenNewPosition()) return;
    if(async_tm.PendingCount() >= InpMaxPendingAsync) return;  // backpressure
 

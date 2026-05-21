@@ -1,4 +1,4 @@
-"""Phase D HFT async unit tests — 5 cases.
+"""Phase D HFT async unit tests — 10 cases.
 
 1. async_build renders the hft-async scaffold to a fresh dir
 2. the rendered .mq5 contains both OrderSendAsync references *and*
@@ -8,6 +8,11 @@
 5. CAsyncTradeManager.mqh must NOT pull in stock MQL5 stdlib headers
    (regression for the v1.0.1 demo finding — a stray `<Trade\\Trade.mqh>`
    include caused fresh Wine MetaEditor installs to fail with error 106).
+6. v2: CAsyncTradeManager has SendCloseAsync + CloseAllAsync methods
+7. v2: CAsyncTradeManager has stale cleanup (CleanupStale)
+8. v2: CAsyncTradeManager has stats tracking (GetStats / PrintStats)
+9. v2: CAsyncTradeManager has auto filling mode detection (_detectFilling)
+10. v2: scaffold includes stale cleanup in OnTick + stats in OnDeinit
 """
 
 from __future__ import annotations
@@ -99,3 +104,55 @@ def test_async_build_refuses_overwrite_without_force(tmp_path: Path) -> None:
          "--output", str(out)],
     )
     assert rc != 0
+
+
+# ----- v2 tests below -----
+
+def test_async_trade_manager_has_close_methods() -> None:
+    """v2: CAsyncTradeManager must expose SendCloseAsync and CloseAllAsync."""
+    mgr_path = REPO / "Include" / "CAsyncTradeManager.mqh"
+    body = mgr_path.read_text()
+    assert "SendCloseAsync" in body, "Missing SendCloseAsync method"
+    assert "CloseAllAsync" in body, "Missing CloseAllAsync method"
+
+
+def test_async_trade_manager_has_stale_cleanup() -> None:
+    """v2: CAsyncTradeManager must have CleanupStale for timeout handling."""
+    mgr_path = REPO / "Include" / "CAsyncTradeManager.mqh"
+    body = mgr_path.read_text()
+    assert "CleanupStale" in body, "Missing CleanupStale method"
+    assert "m_stale_timeout_us" in body, "Missing stale timeout config"
+
+
+def test_async_trade_manager_has_stats() -> None:
+    """v2: CAsyncTradeManager must track and report execution stats."""
+    mgr_path = REPO / "Include" / "CAsyncTradeManager.mqh"
+    body = mgr_path.read_text()
+    assert "AsyncStats" in body, "Missing AsyncStats struct"
+    assert "GetStats" in body, "Missing GetStats method"
+    assert "PrintStats" in body, "Missing PrintStats method"
+    assert "m_total_reconciled" in body, "Missing reconciliation counter"
+    assert "m_total_rejected" in body, "Missing rejection counter"
+
+
+def test_async_trade_manager_has_auto_filling() -> None:
+    """v2: CAsyncTradeManager must auto-detect filling mode per symbol."""
+    mgr_path = REPO / "Include" / "CAsyncTradeManager.mqh"
+    body = mgr_path.read_text()
+    assert "_detectFilling" in body, "Missing _detectFilling method"
+    assert "SYMBOL_FILLING_MODE" in body, "Must query SYMBOL_FILLING_MODE"
+    assert "ORDER_FILLING_FOK" in body, "Must support FOK filling"
+    assert "ORDER_FILLING_IOC" in body, "Must support IOC filling"
+    assert "ORDER_FILLING_RETURN" in body, "Must support RETURN filling"
+
+
+def test_scaffold_uses_v2_features(tmp_path: Path) -> None:
+    """v2: rendered scaffold must use stale cleanup + stats."""
+    out = tmp_path / "V2Check"
+    async_build.main(
+        ["--name", "V2Check", "--symbol", "EURUSD", "--tf", "M1",
+         "--output", str(out)],
+    )
+    text = (out / "V2Check.mq5").read_text()
+    assert "CleanupStale" in text, "Scaffold must call CleanupStale in OnTick"
+    assert "PrintStats" in text, "Scaffold must call PrintStats in OnDeinit"
