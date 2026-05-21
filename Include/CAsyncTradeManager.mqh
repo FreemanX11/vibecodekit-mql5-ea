@@ -153,7 +153,7 @@ private:
 
       MqlTradeRequest req={};
       MqlTradeResult  res={};
-      req.action       = p.is_close ? TRADE_ACTION_DEAL : TRADE_ACTION_DEAL;
+      req.action       = TRADE_ACTION_DEAL;
       req.symbol       = p.symbol;
       req.volume       = p.volume - p.volume_filled;
       req.type         = p.type;
@@ -169,21 +169,14 @@ private:
          m_total_rejected++;
          return false;
         }
-      // Update pending entry in-place
+      // Append new entry (old was already removed by caller)
       AsyncPending updated = p;
-      updated.request_id  = res.request_id;
+      updated.request_id   = res.request_id;
       updated.timestamp_us = GetMicrosecondCount();
       updated.retry_count  = p.retry_count + 1;
-      // Find and replace
       const int sz = ArraySize(m_pending);
-      for(int i = 0; i < sz; i++)
-        {
-         if(m_pending[i].request_id == p.request_id)
-           {
-            m_pending[i] = updated;
-            break;
-           }
-        }
+      ArrayResize(m_pending, sz + 1);
+      m_pending[sz] = updated;
       m_total_retried++;
       Print("[AsyncTM] retrying req=", p.request_id, " → new req=", res.request_id,
             " attempt=", updated.retry_count);
@@ -303,19 +296,14 @@ public:
             return;
            }
 
-         // Success or partial fill
-         const ulong dt = GetMicrosecondCount() - m_pending[i].timestamp_us;
-         m_sum_latency_us += dt;
-         if(dt > m_max_latency_us)
-            m_max_latency_us = dt;
-
+         // Partial fill check
          double filled = result.volume;
-         if(filled > 0 && filled < m_pending[i].volume)
+         double remaining = m_pending[i].volume - m_pending[i].volume_filled;
+         if(filled > 0 && filled < remaining)
            {
             m_total_partial++;
             Print("[AsyncTM] partial fill req=", result.request_id,
-                  " filled=", filled, "/", m_pending[i].volume,
-                  " latency_us=", dt);
+                  " filled=", filled, "/", remaining);
             m_pending[i].volume_filled += filled;
             // Retry remaining volume
             AsyncPending copy = m_pending[i];
@@ -324,7 +312,11 @@ public:
             return;
            }
 
-         // Full fill
+         // Full fill — record latency only for completed orders
+         const ulong dt = GetMicrosecondCount() - m_pending[i].timestamp_us;
+         m_sum_latency_us += dt;
+         if(dt > m_max_latency_us)
+            m_max_latency_us = dt;
          m_total_reconciled++;
          Print("[AsyncTM] reconciled req=", result.request_id,
                " retcode=", retcode,
