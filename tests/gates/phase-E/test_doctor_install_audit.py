@@ -39,6 +39,46 @@ def test_doctor_reports_metaeditor_and_terminal_via_env(
     assert by_name["terminal-bin"]["detail"] == str(term)
 
 
+def test_doctor_windows_native_does_not_require_wine(
+    tmp_path: Path, monkeypatch
+) -> None:
+    me = tmp_path / "MetaEditor64.exe"
+    term = tmp_path / "terminal64.exe"
+    me.write_bytes(b"")
+    term.write_bytes(b"")
+    monkeypatch.setenv("METAEDITOR_PATH", str(me))
+    monkeypatch.setenv("MQL5_TERMINAL_PATH", str(term))
+    monkeypatch.setattr(doctor.sys, "platform", "win32")
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: None)
+
+    rep = doctor.run_doctor(REPO_ROOT)
+    by_name = {c["name"]: c for c in rep.checks}
+
+    assert by_name["wine"]["ok"] is True
+    assert by_name["wine"]["detail"] == "not required on Windows native"
+    assert by_name["metaeditor-bin"]["ok"] is True
+    assert by_name["terminal-bin"]["ok"] is True
+
+
+def test_doctor_linux_still_requires_wine(
+    tmp_path: Path, monkeypatch
+) -> None:
+    me = tmp_path / "MetaEditor64.exe"
+    term = tmp_path / "terminal64.exe"
+    me.write_bytes(b"")
+    term.write_bytes(b"")
+    monkeypatch.setenv("METAEDITOR_PATH", str(me))
+    monkeypatch.setenv("MQL5_TERMINAL_PATH", str(term))
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: None)
+
+    rep = doctor.run_doctor(REPO_ROOT)
+    by_name = {c["name"]: c for c in rep.checks}
+
+    assert by_name["wine"]["ok"] is False
+    assert by_name["wine"]["detail"] == "PATH"
+
+
 def test_doctor_metaeditor_and_terminal_fail_with_useful_detail(
     tmp_path: Path, monkeypatch
 ) -> None:
