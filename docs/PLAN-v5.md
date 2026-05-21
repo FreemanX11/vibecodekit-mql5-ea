@@ -343,11 +343,15 @@ public:
 |:------:|----------------|-------|-----|------|
 | 5 | EURUSD 1.23456 | 0.00001 | 0.0001 | Forex modern |
 | 4 | EURUSD 1.2345 | 0.0001 | 0.0001 | Forex legacy |
-| 3 | XAUUSD 4589.xxx (Exness), USDJPY 151.xxx | 0.001 | 0.01 | XAU 3d / JPY 3d |
-| 2 | XAUUSD 4567.xx (IC) | 0.01 | 0.1 | XAU 2d / Indices |
+| 3 | USDJPY 151.xxx | 0.001 | 0.01 | JPY 3d |
+| 3 | XAUUSD 4589.xxx (Exness) | 0.001 | **0.1** | XAU 3d (metal ×10) |
+| 2 | XAUUSD 4567.xx (IC) | 0.01 | **0.1** | XAU 2d (metal ×10) |
+| 2 | Indices (non-metal) | 0.01 | 0.01 | Indices 2d |
 | 1 | US30 35000.x | 0.1 | 1.0 | Indices (rare) |
 
-**Quy tắc canonical: `pip = (digits ∈ {3,5}) ? 10*point : 1*point`.**
+**Quy tắc canonical:**
+1. `pip = (digits ∈ {3,5}) ? 10*point : 1*point`
+2. **Metals (XAU/XAG):** pip ×10 extra → 1 USD = 10 pips convention.
 
 ---
 

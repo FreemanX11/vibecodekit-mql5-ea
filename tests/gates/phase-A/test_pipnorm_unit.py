@@ -33,6 +33,11 @@ class PipNormalizerRef:
         self.stops_level = 0
         self.initialized = False
 
+    @staticmethod
+    def _is_metal(symbol: str) -> bool:
+        s = symbol.upper()
+        return "XAU" in s or "GOLD" in s or "XAG" in s or "SILVER" in s
+
     def init(self, *, symbol: str, digits: int, point: float,
              tick_size: float, tick_value: float, stops_level: int) -> bool:
         if point <= 0 or digits <= 0:
@@ -41,6 +46,8 @@ class PipNormalizerRef:
         self.digits = digits
         self.point = point
         self.pip_in_points = 10.0 if digits in (3, 5) else 1.0
+        if self._is_metal(symbol):
+            self.pip_in_points *= 10.0
         self.pip = point * self.pip_in_points
         self.tick_size = tick_size
         self.tick_value = tick_value
@@ -104,9 +111,16 @@ def xauusd_2d() -> PipNormalizerRef:
                   tick_size=0.01, tick_value=1.0, stops_level=20)
     return p
 
+@pytest.fixture
+def xauusd_3d() -> PipNormalizerRef:
+    p = PipNormalizerRef()
+    assert p.init(symbol="XAUUSD", digits=3, point=0.001,
+                  tick_size=0.001, tick_value=1.0, stops_level=200)
+    return p
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5 unit tests, one per public method.
+# 5 unit tests, one per public method + gold cross-broker test.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_unit_init_rejects_zero_point():
@@ -119,7 +133,27 @@ def test_unit_init_rejects_zero_point():
 def test_unit_pips_truth_table(eurusd_5d, usdjpy_3d, xauusd_2d):
     assert eurusd_5d.Pips(30) == pytest.approx(0.0030)
     assert usdjpy_3d.Pips(30) == pytest.approx(0.30)
-    assert xauusd_2d.Pips(30) == pytest.approx(0.30)
+    assert xauusd_2d.Pips(30) == pytest.approx(3.00)
+
+
+def test_unit_gold_cross_broker_consistency(xauusd_2d, xauusd_3d):
+    """Gold pip must be 0.10 on both 2-digit and 3-digit brokers."""
+    assert xauusd_2d.pip == pytest.approx(0.10)
+    assert xauusd_3d.pip == pytest.approx(0.10)
+    assert xauusd_2d.Pips(10) == pytest.approx(1.00)   # 10 pips = 1 USD
+    assert xauusd_3d.Pips(10) == pytest.approx(1.00)   # same on 3-digit
+    assert xauusd_2d.Pips(30) == xauusd_3d.Pips(30)    # cross-broker equal
+
+
+def test_unit_metal_detection():
+    """Verify metal detection for various symbol names."""
+    assert PipNormalizerRef._is_metal("XAUUSD")
+    assert PipNormalizerRef._is_metal("GOLD")
+    assert PipNormalizerRef._is_metal("GOLDm")
+    assert PipNormalizerRef._is_metal("XAGUSD")
+    assert PipNormalizerRef._is_metal("SILVER")
+    assert not PipNormalizerRef._is_metal("EURUSD")
+    assert not PipNormalizerRef._is_metal("USDJPY")
 
 
 def test_unit_lot_for_risk_snaps_to_step(eurusd_5d):
@@ -145,4 +179,4 @@ def test_unit_is_valid_sl_distance(eurusd_5d, usdjpy_3d):
 def test_unit_clamp_sl_pips(eurusd_5d, xauusd_2d):
     assert eurusd_5d.ClampSLPips(3) == 5     # bumps below-min up to 5
     assert eurusd_5d.ClampSLPips(30) == 30   # already valid
-    assert xauusd_2d.ClampSLPips(10) == 20   # stops_level=20 pips at 2d
+    assert xauusd_2d.ClampSLPips(10) == 10   # stops_level=20pts / pip_in_points=10 = 2 min pips
