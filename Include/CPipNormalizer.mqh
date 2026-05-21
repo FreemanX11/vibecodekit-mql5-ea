@@ -6,12 +6,14 @@
 //|                                                                   |
 //|   digits ∈ {3, 5}  →  pip = 10 * point                             |
 //|   otherwise        →  pip = 1  * point                             |
+//|   metals (XAU/XAG) →  pip ×10 extra  (1 USD = 10 pips convention)   |
 //|                                                                   |
 //| Examples:                                                         |
 //|   EURUSD 5d, 1.23456 → point 0.00001, pip 0.0001                  |
 //|   EURUSD 4d, 1.2345  → point 0.0001 , pip 0.0001                  |
 //|   USDJPY 3d, 151.234 → point 0.001  , pip 0.01                    |
 //|   XAUUSD 2d, 4567.89 → point 0.01   , pip 0.1                     |
+//|   XAUUSD 3d, 4567.890→ point 0.001  , pip 0.1                     |
 //|                                                                   |
 //| Public surface (per docs/phase-A-spec.md §"CPipNormalizer          |
 //| interface"):                                                      |
@@ -54,6 +56,7 @@ public:
    int               ClampSLPips(int desired) const;
 
    string            Symbol(void)        const { return m_symbol; }
+   bool              IsMetal(void)       const { return DetectMetal(m_symbol); }
    int               Digits(void)        const { return m_digits; }
    double            Point(void)         const { return m_point; }
    double            Pip(void)           const { return m_pip; }
@@ -61,6 +64,9 @@ public:
    long              StopsLevel(void)    const { return m_stops_level; }
    long              FreezeLevel(void)   const { return m_freeze_level; }
    bool              IsInitialized(void) const { return m_initialized; }
+
+private:
+   bool              DetectMetal(const string sym) const;
   };
 
 //+------------------------------------------------------------------+
@@ -96,6 +102,9 @@ bool CPipNormalizer::Init(const string symbol = NULL)
 
    // Canonical rule: digits ∈ {3, 5} → pip = 10 * point; else pip = 1 * point.
    m_pip_in_points    = (m_digits == 3 || m_digits == 5) ? 10.0 : 1.0;
+   // Metals (XAU/XAG): 1 USD = 10 pips convention → pip ×10 extra.
+   if(DetectMetal(m_symbol))
+      m_pip_in_points *= 10.0;
    m_pip              = m_point * m_pip_in_points;
 
    m_tick_size        = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_SIZE);
@@ -179,6 +188,17 @@ int CPipNormalizer::ClampSLPips(int desired) const
    if(m_pip_in_points <= 0.0) return(desired);
    int min_pips = (int)MathCeil((double)m_stops_level / m_pip_in_points);
    return(desired < min_pips ? min_pips : desired);
+  }
+
+//+------------------------------------------------------------------+
+//| Detect metal symbols (gold/silver) by name substring.             |
+//+------------------------------------------------------------------+
+bool CPipNormalizer::DetectMetal(const string sym) const
+  {
+   string upper = sym;
+   StringToUpper(upper);
+   return(StringFind(upper, "XAU") >= 0 || StringFind(upper, "GOLD") >= 0 ||
+          StringFind(upper, "XAG") >= 0 || StringFind(upper, "SILVER") >= 0);
   }
 
 #endif // __CPIP_NORMALIZER_MQH__
