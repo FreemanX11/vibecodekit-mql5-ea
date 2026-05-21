@@ -80,8 +80,9 @@ mql5-investigate = "vibecodekit_mql5.review.investigate:main"
 mql5-deploy-vps = "vibecodekit_mql5.deploy_vps:main"
 mql5-cloud-optimize = "vibecodekit_mql5.cloud_optimize:main"
 mql5-canary = "vibecodekit_mql5.canary:main"
-# Ship (3)
+# Ship (4)
 mql5-forge-pr = "vibecodekit_mql5.forge_pr:main"
+mql5-package = "vibecodekit_mql5.package:main"
 mql5-ship = "vibecodekit_mql5.ship:main"
 mql5-refine = "vibecodekit_mql5.refine:main"
 # Other (4)

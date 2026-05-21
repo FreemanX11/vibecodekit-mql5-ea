@@ -159,7 +159,7 @@ def test_phase_e_command_catalog_callable() -> None:
         "rri.rri_bt", "rri.rri_rr", "rri.rri_chart",
         "review.review", "review.eng_review", "review.ceo_review",
         "review.cso", "review.investigate",
-        "deploy_vps", "cloud_optimize", "canary", "forge_pr", "ship",
+        "deploy_vps", "cloud_optimize", "canary", "forge_pr", "package", "ship",
         "refine", "broker_safety", "trader_check", "install",
     ]
     missing = []

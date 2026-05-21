@@ -510,6 +510,50 @@ Output: file Markdown template với 5 persona × 7 dimension × 8 axis
 
 ### 4.7. Ship — dashboard + Algo Forge PR
 
+**Đóng gói artifact ship-ready**
+
+Sau khi `mql5-auto-build` sinh `./dist`, chạy `mql5-package` để tạo
+manifest checksum + file zip giao cho operator/reviewer:
+
+```bash
+python -m vibecodekit_mql5.package \
+    --out-dir ./dist \
+    --spec ea-spec.yaml
+```
+
+Output thêm vào `./dist`:
+
+```
+dist/
+├── manifest.json                # inventory + SHA-256 từng artifact
+└── dist-ship.zip                 # gói ship-ready gồm artifact + manifest
+```
+
+`manifest.json` phân nhóm file theo mục đích:
+
+| Group | Gồm những gì | Mục đích |
+|-------|--------------|----------|
+| `runtime` | `*.ex5`, `Sets/*.set` | Copy vào MT5 để chạy EA / Strategy Tester |
+| `source` | `*.mq5`, `*.mqh`, `README.md` | Audit source, recompile, review scaffold |
+| `review` | `auto-build-report.json`, `quality-matrix.html`, `*.docs.*`, `*.log` | Bằng chứng build/lint/compile/gate + docs |
+| `repro` | `ea-spec.yaml`, model/data phụ trợ nếu có | Tái tạo build từ spec |
+
+Mỗi artifact trong manifest có cấu trúc:
+
+```json
+{
+  "path": "TrendEA_EURUSD_H1.ex5",
+  "group": "runtime",
+  "kind": "compiled-ea",
+  "size": 36466,
+  "sha256": "...",
+  "archive_path": "TrendEA_EURUSD_H1.ex5"
+}
+```
+
+Nếu spec nằm ngoài `--out-dir`, `--spec` sẽ đưa spec vào zip dưới
+`repro/<tên-file-spec>` để gói release tự đủ thông tin tái tạo.
+
 **Render + publish dashboard**
 
 ```bash
