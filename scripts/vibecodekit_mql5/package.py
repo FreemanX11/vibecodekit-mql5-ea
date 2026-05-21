@@ -87,7 +87,7 @@ def classify_artifact(path: Path, out_dir: Path) -> tuple[str, str] | None:
     ):
         return "repro", "ea-spec"
     if suffix in {".onnx", ".csv"}:
-        return "repro", suffix.lstrip("-")
+        return "repro", suffix.lstrip(".")
     return None
 
 
