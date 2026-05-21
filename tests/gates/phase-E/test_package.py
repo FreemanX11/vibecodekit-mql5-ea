@@ -31,6 +31,8 @@ def _sample_out_dir(tmp_path: Path) -> Path:
     _write(out / "quality-matrix.html", "<html></html>")
     _write(out / "ShipEA.docs.html", "<html>docs</html>")
     _write(out / "ShipEA.docs.md", "# docs")
+    _write(out / "model.onnx", b"onnx")
+    _write(out / "returns.csv", "ret\n0.01\n")
     _write(out / "notes.txt", "ignored")
     return out
 
@@ -53,6 +55,8 @@ def test_package_collects_artifacts_by_ship_group(tmp_path: Path) -> None:
     assert by_path["CPipNormalizer.mqh"].kind == "include"
     assert by_path["auto-build-report.json"].group == "review"
     assert by_path["quality-matrix.html"].kind == "quality-dashboard"
+    assert by_path["model.onnx"].kind == "onnx"
+    assert by_path["returns.csv"].kind == "csv"
     assert by_path[str(spec)].group == "repro"
     assert "notes.txt" not in by_path
     assert manifest.groups["runtime"] == ["Sets/default.set", "ShipEA.ex5"]
