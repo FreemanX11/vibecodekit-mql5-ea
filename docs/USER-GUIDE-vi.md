@@ -521,6 +521,20 @@ python -m vibecodekit_mql5.package \
     --spec ea-spec.yaml
 ```
 
+Hoặc bật đóng gói ngay trong pipeline:
+
+```bash
+python -m vibecodekit_mql5.auto_build \
+    --spec ea-spec.yaml \
+    --out-dir ./dist \
+    --mode personal \
+    --package
+```
+
+`--package` chỉ chạy sau khi pipeline xanh; nếu build/lint/compile/gate fail,
+report ghi package bị skip và không sinh zip. Có thể override tên zip bằng
+`--package-zip ./release/TrendEA-v1.0.0.zip`.
+
 Output thêm vào `./dist`:
 
 ```

@@ -46,6 +46,7 @@ from . import build as build_mod
 from . import compile as compile_mod
 from . import dashboard as dashboard_mod
 from . import lint as lint_mod
+from . import package as package_mod
 from . import spec_schema
 
 # Kept for backward compat with anything that imported these constants from
@@ -73,6 +74,7 @@ class PipelineReport:
     stages: list[StageResult] = field(default_factory=list)
     dashboard: dict[str, Any] | None = None
     docs: dict[str, Any] | None = None
+    package: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +84,7 @@ class PipelineReport:
             "stages": [s.to_dict() for s in self.stages],
             "dashboard": self.dashboard,
             "docs": self.docs,
+            "package": self.package,
         }
 
 
@@ -217,6 +220,9 @@ def run_pipeline(
     publish_cmd: str | None = None,
     docs_lang: str = "vi",
     docs_formats: tuple[str, ...] = ("html", "md"),
+    package_artifacts: bool = False,
+    package_spec: Path | None = None,
+    package_zip: Path | None = None,
 ) -> PipelineReport:
     report = PipelineReport(spec=spec, out_dir=str(out_dir))
 
@@ -233,6 +239,13 @@ def run_pipeline(
         _maybe_attach_dashboard(
             report, out_dir, skip=skip_dashboard,
             publish_cmd=publish_cmd,
+        )
+        _maybe_attach_package(
+            report,
+            out_dir,
+            enabled=package_artifacts,
+            spec_path=package_spec,
+            zip_path=package_zip,
         )
         return report
 
@@ -277,6 +290,38 @@ def run_pipeline(
             report.ok = False
 
     return _finalize(mq5_path)
+
+
+def _maybe_attach_package(
+    report: PipelineReport,
+    out_dir: Path,
+    *,
+    enabled: bool,
+    spec_path: Path | None,
+    zip_path: Path | None,
+) -> None:
+    if not enabled:
+        report.package = {"skipped": True}
+        return
+    if not report.ok:
+        report.package = {"skipped": True, "reason": "pipeline failed"}
+        return
+    try:
+        manifest = package_mod.package_out_dir(
+            out_dir,
+            zip_path=zip_path,
+            spec_path=spec_path,
+        )
+        manifest_path = out_dir / package_mod.DEFAULT_MANIFEST_NAME
+        report.package = {
+            "ok": True,
+            "manifest_path": str(manifest_path),
+            "zip_path": manifest.zip_path,
+            "groups": manifest.groups,
+            "artifact_count": len(manifest.artifacts),
+        }
+    except OSError as exc:
+        report.package = {"ok": False, "error": f"package failed: {exc}"}
 
 
 def _maybe_attach_dashboard(
@@ -386,6 +431,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="comma-separated docs formats (html, md, pdf). "
                          "Default: html,md. pdf requires headless Chrome "
                          "on PATH or $MQL5_CHROME_PATH.")
+    ap.add_argument("--package", action="store_true",
+                    help="write manifest.json and a ship-ready zip after a green build")
+    ap.add_argument("--package-zip", type=Path, default=None,
+                    help="override the package zip path (default: <out-dir>/<name>-ship.zip)")
     ap.add_argument("--force", action="store_true",
                     help="overwrite existing output directory")
     args = ap.parse_args(argv)
@@ -422,6 +471,9 @@ def main(argv: list[str] | None = None) -> int:
         publish_cmd=args.publish_cmd,
         docs_lang=args.docs_lang,
         docs_formats=docs_formats,
+        package_artifacts=args.package,
+        package_spec=args.spec,
+        package_zip=args.package_zip,
     )
     report_path = _write_report(report, out_dir)
     print(json.dumps(report.to_dict(), indent=2))
