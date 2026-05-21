@@ -1,5 +1,5 @@
 # ThanosEA v2.1 — Deep Review & QA Report
-**Date:** 2026-05-20 | **Mode:** Enterprise | **Version:** 2.1.0
+**Date:** 2026-05-21 | **Mode:** Enterprise | **Version:** 2.1.1
 
 ---
 
@@ -16,64 +16,95 @@
 
 ---
 
-## 2. Deep Review: Đồng bộ Pips/Points
+## 2. Deep Review: Xử lý Pip cho XAUUSD (Gold)
 
-### 2.1 CPipNormalizer — Cách hoạt động
+### 2.1 Quy ước Gold Pip
 
-| Broker | _Digits | _Point | pip.Pip() | pip.Pips(1) | pip.Pips(3000) |
+**Quy ước chuẩn**: 1 USD giá vàng = 10 pips → 1 pip = $0.10
+
+| | Forex (EURUSD) | Gold (XAUUSD) |
+|---|---|---|
+| 1 pip (quy ước) | 0.0001 | **0.10** |
+| Broker digits | 4 hoặc 5 | 2 hoặc 3 |
+| CPipNormalizer `m_pip` | 0.0001 | 0.01 |
+| **Gold pip / CPipNormalizer pip** | **1:1** | **10:1** |
+
+### 2.2 Bug phát hiện: CPipNormalizer không match quy ước gold
+
+`CPipNormalizer` dùng quy tắc digits ∈ {3,5} → pip = 10 × point. Quy tắc này:
+- ✓ Forex: đúng (5-digit → pipette → 1 pip = 10 points)
+- ✗ Gold 2-digit: sai! `m_pip = 0.01 × 1 = 0.01` → 1 CPipNormalizer-pip = $0.01 (thực tế 1 pip = $0.10)
+- ✗ Gold 3-digit: `m_pip = 0.001 × 10 = 0.01` → cùng kết quả sai
+
+**Hậu quả (code cũ)**: Tất cả tham số "pip" bị **nhỏ 10 lần** trên XAUUSD.
+
+| Tham số (code cũ) | Mong đợi | Thực tế | Sai lệch |
+|---|---|---|---|
+| DcaStepPips=30 → `pip.Pips(30)` | $3.00 (30 pips) | $0.30 | **10× nhỏ hơn** |
+| TpFromBEPips=20 → `pip.Pips(20)` | $2.00 (20 pips) | $0.20 | **10× nhỏ hơn** |
+| MaxSpreadPips=5 → `Init(pip, 5)` | $0.50 (5 pips) | $0.05 | **10× chặt hơn** |
+
+### 2.3 Fix: Auto-detect Metal + `pipScale`
+
+**Giải pháp**: Thêm `IsMetalSymbol()` + `pipScale` (=10 cho gold/silver, =1 cho forex):
+```
+pipScale = IsMetalSymbol() ? 10 : 1;
+double ScaledPips(int pips) { return pip.Pips(pips * pipScale); }
+```
+
+**Phân loại tham số**:
+- **"Pips" params** → dùng `ScaledPips()` (có gold scaling)
+- **"Points" params** → dùng `pip.Pips()` (đã cross-broker qua CPipNormalizer, không cần scaling thêm)
+
+### 2.4 Kiểm tra toàn bộ tham số sau fix
+
+| Tham số | Hàm | XAUUSD 2-digit | XAUUSD 3-digit | EURUSD 5-digit | Status |
 |---|---|---|---|---|---|
-| XAUUSD 2-digit | 2 | 0.01 | 0.01 | 0.01 | **30.00** |
-| XAUUSD 3-digit | 3 | 0.001 | 0.01 | 0.01 | **30.00** |
-| EURUSD 4-digit | 4 | 0.0001 | 0.0001 | 0.0001 | **0.3000** |
-| EURUSD 5-digit | 5 | 0.00001 | 0.0001 | 0.0001 | **0.3000** |
+| `EmaRangePoints=3000` | `pip.Pips(3000)` | 30.00 | 30.00 | 0.3000 | ✓ **PASS** |
+| `DcaStepPips=30` | `ScaledPips(30)` = `pip.Pips(300)` | **3.00** | **3.00** | 0.0030 | ✓ **PASS** |
+| `TpFromBEPips=20` | `ScaledPips(20)` = `pip.Pips(200)` | **2.00** | **2.00** | 0.0020 | ✓ **PASS** |
+| `TrimTpPoints=1000` | `pip.Pips(1000)` | 10.00 | 10.00 | 0.1000 | ✓ **PASS** |
+| `TrailingStepPips` | `ScaledPips()` | Scaled ×10 | Scaled ×10 | ×1 | ✓ **PASS** |
+| `TrailingPadding` | `ScaledPips()` | Scaled ×10 | Scaled ×10 | ×1 | ✓ **PASS** |
+| `MinTrailingProfit` | `ScaledPips()` | Scaled ×10 | Scaled ×10 | ×1 | ✓ **PASS** |
+| `MaxSpreadPips=5` | `Init(pip, 5×pipScale)` | max $0.50 | max $0.50 | max 5 pips | ✓ **PASS** |
+| `CalcProtectiveSL` | `ScaledPips(500)` | $50.00 | $50.00 | 500 pips | ✓ **PASS** |
 
-**Quy tắc**: `Pips(n) = n × m_pip` → kết quả **giống nhau** giữa 2-digit và 3-digit (hoặc 4-digit và 5-digit).
-
-### 2.2 Kiểm tra toàn bộ tham số tính khoảng cách
-
-| Tham số | Giá trị | Hàm dùng | Kết quả (XAUUSD) | Status |
-|---|---|---|---|---|
-| `EmaRangePips = 3000` | ±30.00 từ EMA | `pip.Pips(3000)` | Cross-broker consistent | ✓ **PASS** |
-| `DcaStepPips = 30` | 0.30 giữa các lệnh | `pip.Pips(30)` | Cross-broker consistent | ✓ **PASS** |
-| `TpFromBEPips = 20` | 0.20 từ BE chuỗi | `pip.Pips(20)` | Cross-broker consistent | ✓ **PASS** |
-| `TrimTpPips = 1000` | 10.00 từ BE cặp | `pip.Pips(1000)` | Cross-broker consistent | ✓ **PASS** |
-| `TrailingStepPips` | Trailing step | `pip.Pips()` | Cross-broker consistent | ✓ **PASS** |
-| `TrailingPadding` | Trailing padding | `pip.Pips()` | Cross-broker consistent | ✓ **PASS** |
-| `MinTrailingProfit` | Min profit trailing | `pip.Pips()` | Cross-broker consistent | ✓ **PASS** |
-| `MaxSpreadPips` | Max spread | `CSpreadGuard.Init()` | Delegated to library | ✓ **PASS** |
-| `CalcProtectiveSL` | 5000 pips = $50 XAUUSD | `pip.Pips(5000)` | Cross-broker consistent | ✓ **PASS** |
-
-### 2.3 Kiểm tra StopsLevel / các phép tính đặc biệt
+### 2.5 StopsLevel / các phép tính đặc biệt
 
 | Vị trí | Code | Đơn vị | Status |
 |---|---|---|---|
 | `stopsLevelPoints` | `SymbolInfoInteger(SYMBOL_TRADE_STOPS_LEVEL)` | Points (native) | ✓ Correct |
 | DrawArrow STOPLEVEL | `stopsLevelPoints * pip.Point()` | Points → Price | ✓ **PASS** |
-| Trailing fractal compare | `stopsLevelPoints * pip.Point()` | Points → Price | ✓ **FIXED** (was `pip.Pips((int)pip.StopsLevel())`) |
-| Trailing candle compare | `stopsLevelPoints * pip.Point()` | Points → Price | ✓ **FIXED** |
-| Trailing SL validation | `Bid - level > stopsLevelPoints * pip.Point()` | Price compare | ✓ **FIXED** (was mixed pips/points) |
+| Trailing fractal compare | `stopsLevelPoints * pip.Point()` | Points → Price | ✓ **FIXED** (v2.1) |
+| Trailing candle compare | `stopsLevelPoints * pip.Point()` | Points → Price | ✓ **FIXED** (v2.1) |
+| Trailing SL validation | `Bid - level > stopsLevelPoints * pip.Point()` | Price compare | ✓ **FIXED** (v2.1) |
 
-### 2.4 Lỗi đã fix trong deep review
+### 2.6 Tổng kết bugs đã fix
 
-| # | Lỗi | Dòng | Mô tả | Fix |
-|---|---|---|---|---|
-| 1 | **StopsLevel unit mismatch** | 220, 230, 241, 251 | `pip.Pips((int)pip.StopsLevel())` — StopsLevel trả về points, Pips() nhận pips. Trên broker 3/5-digit: sai 10x | `stopsLevelPoints * pip.Point()` |
-| 2 | **Trailing SL pips vs points** | 710, 718 | `pip.PriceToPips(x) > pip.StopsLevel()` — so sánh pips với points | `price_diff > stopsLevelPoints * pip.Point()` |
-| 3 | **Tên tham số không nhất quán** | 32, 49 | `EmaRangePoints`, `TrimTpPoints` — đặt tên "Points" nhưng dùng `pip.Pips()` | Đổi thành `EmaRangePips`, `TrimTpPips` |
-| 4 | **Protective SL quá chật** | 384 | `pip.Pips(500)` = $5 XAUUSD — grid có thể vượt 500 pips trong vài bậc DCA | `pip.Pips(5000)` = $50 XAUUSD |
-
-### 2.5 Tổng kết đồng bộ pips/points
-
-| Thành phần | Trước deep review | Sau deep review |
+| # | Bug | Fix |
 |---|---|---|
-| Tham số entry/TP/DCA | ✓ Dùng `pip.Pips()` | ✓ `pip.Pips()` + tên nhất quán |
-| Tham số trim | ✓ Dùng `pip.Pips()` | ✓ `pip.Pips()` + tên nhất quán |
-| StopsLevel so sánh | ✗ Sai 10x trên 3/5-digit | ✓ `stopsLevelPoints * pip.Point()` |
-| Trailing SL validation | ✗ Mixed pips/points | ✓ Price-based comparison |
-| Protective SL | ⚠ $5 XAUUSD (quá chật) | ✓ $50 XAUUSD (an toàn) |
-| Hardcoded `* _Point` | ✗ 0 instances (đã fix v2.0) | ✓ 0 instances |
+| 1 | **Gold pip convention sai** — CPipNormalizer không match 1 USD = 10 pips | `IsMetalSymbol()` + `pipScale=10` + `ScaledPips()` |
+| 2 | **DCA step 10× nhỏ trên gold** — `pip.Pips(30) = $0.30` thay vì $3.00 | `ScaledPips(DcaStepPips)` |
+| 3 | **TP 10× nhỏ trên gold** — `pip.Pips(20) = $0.20` thay vì $2.00 | `ScaledPips(TpFromBEPips)` |
+| 4 | **Spread filter 10× chặt trên gold** — `Init(pip, 5)` filter $0.05 thay vì $0.50 | `Init(pip, MaxSpreadPips * pipScale)` |
+| 5 | **StopsLevel unit mismatch** (v2.1) | `stopsLevelPoints * pip.Point()` |
+| 6 | **Trailing SL pips vs points** (v2.1) | Price-based comparison |
+| 7 | **Protective SL quá chật** (v2.1) | `ScaledPips(500)` = $50 XAUUSD |
 
-**Kết luận: Toàn bộ 46 điểm tính toán pips/points đã đồng bộ và cross-broker consistent.**
+### 2.7 Tổng kết đồng bộ pips/points
+
+| Thành phần | Trước fix | Sau fix |
+|---|---|---|
+| **Gold pip convention** | ✗ 1 pip = $0.01 (sai 10x) | ✓ 1 pip = $0.10 (đúng quy ước) |
+| Tham số "Pips" (DCA, TP, Trailing) | ✗ Sai 10x trên gold | ✓ `ScaledPips()` — auto-scale ×10 cho gold |
+| Tham số "Points" (EMA range, Trim TP) | ✓ Cross-broker via `pip.Pips()` | ✓ Giữ nguyên |
+| StopsLevel so sánh | ✓ Fixed (v2.1) | ✓ `stopsLevelPoints * pip.Point()` |
+| Protective SL | ✓ $50 XAUUSD | ✓ `ScaledPips(500)` = $50 gold, 500 pips forex |
+| Spread guard | ✗ $0.05 trên gold (quá chặt) | ✓ $0.50 trên gold (hợp lý) |
+| 2-digit vs 3-digit gold | ✗ Kết quả sai (DCA/TP sai 10x) | ✓ Giống nhau, đúng quy ước |
+
+**Kết luận: Code auto-detect gold → tính đúng 1 USD = 10 pips, cross-broker consistent (2-digit = 3-digit).**
 
 ---
 
@@ -83,14 +114,14 @@
 | Thông số | Giá trị | Cách tính |
 |---|---|---|
 | `EmaPeriod` | 20 | `iMA(PRICE_CLOSE, MODE_EMA)` |
-| `EmaRangePips` | 3000 | `emaValue ± pip.Pips(3000)` = ±30.00 XAUUSD |
+| `EmaRangePoints` | 3000 | `emaValue ± pip.Pips(3000)` = ±30.00 XAUUSD |
 | **Trigger Buy** | Giá < EMA - range | `Ask < emaLower` |
 | **Trigger Sell** | Giá > EMA + range | `Bid > emaUpper` |
 
 ### 3.2 DCA Grid
 | Thông số | Giá trị | Cách tính |
 |---|---|---|
-| `DcaStepPips` | 30 | `pip.Pips(30)` = 0.30 XAUUSD |
+| `DcaStepPips` | 30 | `ScaledPips(30)` = **3.00** XAUUSD (30 pips × $0.10) |
 | `StartLot` | 0.01 | Lot đầu tiên |
 | `LotMultiplier` | 1.4 | `lot = StartLot × LotMultiplier^count` |
 | **DCA Buy** | Ask ≤ lastBuyPrice - step | Market buy |
@@ -108,15 +139,15 @@
 
 ### 3.3 TP từ Breakeven
 - **Cách tính BE**: `BE = Σ(openPrice × lots) / Σ(lots)` — weighted average price
-- **TP Buy**: `BE + pip.Pips(TpFromBEPips)` = BE + 0.20 XAUUSD
-- **TP Sell**: `BE - pip.Pips(TpFromBEPips)` = BE - 0.20 XAUUSD
+- **TP Buy**: `BE + ScaledPips(TpFromBEPips)` = BE + **2.00** XAUUSD (20 pips × $0.10)
+- **TP Sell**: `BE - ScaledPips(TpFromBEPips)` = BE - **2.00** XAUUSD
 - Cập nhật mỗi tick cho tất cả positions trong chuỗi
 
 ### 3.4 Tỉa lệnh xa nhất (Hedge Trim Farthest)
 1. Tìm lệnh **dương nhất** trong chuỗi (profit cao nhất)
 2. Tìm lệnh **xa nhất** (khoảng cách openPrice → currentPrice lớn nhất)
 3. Tính BE cặp: `(open1×lots1 + open2×lots2) / (lots1+lots2)`
-4. Set TP = BE + `pip.Pips(TrimTpPips)` (Buy) hoặc BE - `pip.Pips(TrimTpPips)` (Sell)
+4. Set TP = BE + `pip.Pips(TrimTpPoints)` (Buy) hoặc BE - `pip.Pips(TrimTpPoints)` (Sell)
 
 ### 3.5 Tỉa lệnh âm nhất (Hedge Trim Most-Loss)
 1. Tìm lệnh **dương nhất** trong chuỗi
@@ -139,14 +170,14 @@
 
 | AP | Tên | Severity | Status | Fix |
 |---|---|---|---|---|
-| AP-1 | No-SL | ERROR | **FIXED** | CalcProtectiveSL(5000 pips) trên mỗi entry |
+| AP-1 | No-SL | ERROR | **FIXED** | CalcProtectiveSL: ScaledPips(500) = $50 XAUUSD |
 | AP-5 | Too many inputs | ERROR | **FIXED** | 8 input + 25 sinput |
 | AP-8 | No spread guard | ERROR | **FIXED** | CSpreadGuard.IsTradable() |
 | AP-9 | Same-bar re-entry | ERROR | **FIXED** | lastBarCount + isNewBar check |
 | AP-11 | No netting check | ERROR | **FIXED** | ACCOUNT_MARGIN_MODE validation |
 | AP-14 | No MFE/MAE logging | ERROR | **FIXED** | CMfeMaeLogger wired |
 | AP-15 | Direct OrderSend | ERROR | **FIXED** | CTrade class throughout |
-| AP-20 | Hardcoded pip math | ERROR | **FIXED** | CPipNormalizer.Pips() + Point() |
+| AP-20 | Hardcoded pip math | ERROR | **FIXED** | CPipNormalizer + ScaledPips() (auto gold detect) |
 | AP-21 | No digits-tested tag | ERROR | **FIXED** | digits-tested: 2,3,4,5 |
 
 ---
@@ -175,7 +206,7 @@
 | | AllowSell | sinput | true | Cho phép Sell |
 | | EAMakesFirstOrder | sinput | true | EA tự vào lệnh đầu |
 | **2. EMA Entry** | EmaPeriod | input | 20 | Chu kỳ EMA |
-| | EmaRangePips | input | 3000 | Range ± từ EMA (pips) |
+| | EmaRangePoints | input | 3000 | Range ± từ EMA (points, cross-broker) |
 | | EmaTimeframe | sinput | CURRENT | Timeframe cho EMA |
 | **3. DCA Grid** | DcaStepPips | input | 30 | Khoảng cách DCA (pips) |
 | | StartLot | input | 0.01 | Lot khởi đầu |
@@ -186,7 +217,7 @@
 | | DailyTpTarget | sinput | 50.0 | TP ngày ($) |
 | **5. Trim** | EnableTrimFarthest | sinput | true | Bật tỉa xa nhất |
 | | EnableTrimMostLoss | sinput | true | Bật tỉa âm nhất |
-| | TrimTpPips | sinput | 1000 | TP cặp tỉa (pips) |
+| | TrimTpPoints | sinput | 1000 | TP cặp tỉa (points, cross-broker) |
 | **6. Trailing** | TrailingType | sinput | 0 | 0=Off, 1=Candle, 2=Fractal, 3+=Points |
 | | TrailingStepPips | sinput | 0 | Bước trailing (pips) |
 | | MinTrailingProfit | sinput | 10 | Min profit trailing (pips) |
@@ -215,7 +246,7 @@
 
 ### Khuyến nghị:
 4. Test trên ít nhất 2 broker (2-digit + 3-digit XAUUSD) cho cross-broker validation
-5. Điều chỉnh `EmaRangePips` và `DcaStepPips` theo volatility của cặp
+5. Điều chỉnh `EmaRangePoints` và `DcaStepPips` theo volatility của cặp
 6. Chạy walkforward + Monte Carlo sau khi có backtest data
 7. Thay MagicNumber (777 phổ biến → collision risk nếu chạy nhiều EA)
 
@@ -223,9 +254,10 @@
 
 ## 8. Kết luận
 
-**✓ Toàn bộ 46 điểm tính toán pips/points đã được audit và đồng bộ.**
-**✓ 4 bugs cross-broker đã fix (StopsLevel mismatch, protective SL, naming).**
-**✓ Pipeline: lint 0 errors, compile PASS, method-hiding PASS.**
+**✓ Gold pip convention: auto-detect metal → ScaledPips() ×10 → 1 USD = 10 pips.**
+**✓ Cross-broker: 2-digit = 3-digit (XAUUSD) và 4-digit = 5-digit (Forex).**
+**✓ 7 bugs đã fix (gold scaling, StopsLevel, trailing, spread, protective SL).**
+**✓ Pipeline: lint 0 errors, compile PASS.**
 **✓ 7 tính năng mới hoạt động đúng logic (cần backtest xác nhận).**
 
 **Đánh giá: READY FOR BACKTEST** — cần chạy trên MT5 desktop để xác nhận hiệu suất.

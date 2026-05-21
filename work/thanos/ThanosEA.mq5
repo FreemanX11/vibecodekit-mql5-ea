@@ -29,7 +29,7 @@ sinput bool   EAMakesFirstOrder  = true;
 
 //=== Group 2: EMA Range Entry ===//
 input int     EmaPeriod          = 20;
-input int     EmaRangePips       = 3000;
+input int     EmaRangePoints     = 3000;
 sinput ENUM_TIMEFRAMES EmaTimeframe = PERIOD_CURRENT;
 
 //=== Group 3: DCA Grid ===//
@@ -46,7 +46,7 @@ sinput double DailyTpTarget      = 50.0;
 //=== Group 5: Hedge Trimming ===//
 sinput bool   EnableTrimFarthest   = true;
 sinput bool   EnableTrimMostLoss   = true;
-sinput int    TrimTpPips           = 1000;
+sinput int    TrimTpPoints         = 1000;
 
 //=== Group 6: Trailing Stop (0=Off, 1=Candles, 2=Fractals, 3+=Points) ===//
 sinput int    TrailingType        = 0;
@@ -91,6 +91,7 @@ double    tickValue          = 0.0;
 int       stopsLevelPoints   = 0;
 int       slippage           = 0;
 bool      isHedging          = false;
+int       pipScale           = 1;
 int       trailingTF         = 0;
 long      lastBarCount       = 0;
 int       emaHandle          = INVALID_HANDLE;
@@ -157,6 +158,22 @@ void SetChartLabel(const string name, const string txt, int x, int y, color col)
    ObjectSetString(0, name, OBJPROP_FONT, "Arial");
 }
 
+//=== Metal detection: XAU/XAG → 1 pip = 10 points (1 USD = 10 pips) ===//
+bool IsMetalSymbol() {
+   string sym = _Symbol;
+   StringToUpper(sym);
+   return (StringFind(sym, "XAU") >= 0 || StringFind(sym, "GOLD") >= 0 ||
+           StringFind(sym, "XAG") >= 0 || StringFind(sym, "SILVER") >= 0);
+}
+
+double ScaledPips(int pips) {
+   return pip.Pips(pips * pipScale);
+}
+
+double ScaledPipsD(double pips) {
+   return pip.Pips((int)(pips * pipScale));
+}
+
 //=== EMA Value ===//
 double GetEMA() {
    if(emaHandle == INVALID_HANDLE) return 0.0;
@@ -208,15 +225,15 @@ double CalcTrailingLevel(int direction, double currentPrice, double trailParam) 
 
    if(trailParam > 2.0) {
       if(direction == 1)
-         level = NormalizeDouble(currentPrice - pip.Pips((int)trailParam), _Digits);
+         level = NormalizeDouble(currentPrice - ScaledPips((int)trailParam), _Digits);
       else
-         level = NormalizeDouble(currentPrice + pip.Pips((int)trailParam), _Digits);
+         level = NormalizeDouble(currentPrice + ScaledPips((int)trailParam), _Digits);
    } else if(trailParam == 2.0) {
       if(direction == 1) {
          for(int i = 1; i < 100; i++) {
             level = GetFractal(_Symbol, tf, 1, i);
             if(level != 0.0) {
-               level -= NormalizeDouble(pip.Pips(TrailingPadding), _Digits);
+               level -= NormalizeDouble(ScaledPips(TrailingPadding), _Digits);
                if(currentPrice - stopsLevelPoints * pip.Point() > level)
                   break;
             } else level = 0;
@@ -226,7 +243,7 @@ double CalcTrailingLevel(int direction, double currentPrice, double trailParam) 
          for(int i = 1; i < 100; i++) {
             level = GetFractal(_Symbol, tf, 0, i);
             if(level != 0.0) {
-               level += NormalizeDouble(pip.Pips(TrailingPadding), _Digits);
+               level += NormalizeDouble(ScaledPips(TrailingPadding), _Digits);
                if(currentPrice + stopsLevelPoints * pip.Point() < level)
                   break;
             } else level = 0;
@@ -236,7 +253,7 @@ double CalcTrailingLevel(int direction, double currentPrice, double trailParam) 
    } else if(trailParam == 1.0) {
       if(direction == 1) {
          for(int i = 1; i < 500; i++) {
-            level = NormalizeDouble(iLow(_Symbol, tf, i) - pip.Pips(TrailingPadding), _Digits);
+            level = NormalizeDouble(iLow(_Symbol, tf, i) - ScaledPips(TrailingPadding), _Digits);
             if(level != 0.0) {
                if(currentPrice - stopsLevelPoints * pip.Point() > level)
                   break;
@@ -246,7 +263,7 @@ double CalcTrailingLevel(int direction, double currentPrice, double trailParam) 
          DrawArrow("FR Buy", level + pip.Point(), 159, clrRed);
       } else {
          for(int i = 1; i < 500; i++) {
-            level = NormalizeDouble(iHigh(_Symbol, tf, i) + pip.Pips(TrailingPadding), _Digits);
+            level = NormalizeDouble(iHigh(_Symbol, tf, i) + ScaledPips(TrailingPadding), _Digits);
             if(level != 0.0) {
                if(currentPrice + stopsLevelPoints * pip.Point() < level)
                   break;
@@ -381,7 +398,7 @@ int ClosePositionsByDirection(int direction) {
 
 //=== Protective SL for DCA series (wide, non-interfering) ===//
 double CalcProtectiveSL(int direction, double price) {
-   double slDistance = pip.Pips(5000);
+   double slDistance = ScaledPips(500);
    if(direction == 1)
       return NormalizeDouble(price - slDistance, _Digits);
    else
@@ -476,9 +493,9 @@ void TrimPair(int direction, bool trimFarthest) {
                                     (bestLots + targetLots), _Digits);
    double trimTP = 0.0;
    if(direction == 1)
-      trimTP = NormalizeDouble(pairBE + pip.Pips(TrimTpPips), _Digits);
+      trimTP = NormalizeDouble(pairBE + pip.Pips(TrimTpPoints), _Digits);
    else
-      trimTP = NormalizeDouble(pairBE - pip.Pips(TrimTpPips), _Digits);
+      trimTP = NormalizeDouble(pairBE - pip.Pips(TrimTpPoints), _Digits);
 
    trade.PositionModify(bestTicket, PositionGetDouble(POSITION_SL), trimTP);
    trade.PositionModify(targetTicket, PositionGetDouble(POSITION_SL), trimTP);
@@ -507,11 +524,14 @@ int OnInit() {
       return INIT_FAILED;
    }
 
+   pipScale = IsMetalSymbol() ? 10 : 1;
+   PrintFormat("Pip scale: %d (%s)", pipScale, IsMetalSymbol() ? "Metal" : "Forex");
+
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints((ulong)((_Digits == 5 || _Digits == 3) ? 30 : 3));
    trade.SetTypeFilling(ORDER_FILLING_RETURN);
 
-   spreadGuard.Init(pip, MaxSpreadPips);
+   spreadGuard.Init(pip, MaxSpreadPips * pipScale);
    mfeLogger.Init("ThanosEA_mfe_mae.csv");
    riskGuard.Init(DailyLossPct, MaxOpenPositions, FreezeOnDDPct);
 
@@ -551,7 +571,7 @@ int OnInit() {
    if(AllowSell) dirText += "Sell";
    SetChartLabel("ParamDir", "Allowed: " + dirText, 5, yPos, InfoColor);
    yPos += FontSize * 2;
-   SetChartLabel("ParamEMA",     StringFormat("EMA(%d) range ± %d pips", EmaPeriod, EmaRangePips), 5, yPos, InfoColor);
+   SetChartLabel("ParamEMA",     StringFormat("EMA(%d) range +/- %d pts", EmaPeriod, EmaRangePoints), 5, yPos, InfoColor);
    yPos += FontSize * 2;
    SetChartLabel("ParamDCA",     StringFormat("DCA step %d pips, mult %.2f", DcaStepPips, LotMultiplier), 5, yPos, InfoColor);
    yPos += FontSize * 2;
@@ -663,7 +683,7 @@ void OnTick() {
    // Set TP from BE for buy series
    if(buyCount > 0 && TpFromBEPips > 0) {
       double buyBE = buyAvgPrice;
-      double buyTP = NormalizeDouble(buyBE + pip.Pips(TpFromBEPips), _Digits);
+      double buyTP = NormalizeDouble(buyBE + ScaledPips(TpFromBEPips), _Digits);
       for(int i = 0; i < PositionsTotal(); i++) {
          ulong ticket = PositionGetTicket(i);
          if(ticket == 0) continue;
@@ -679,7 +699,7 @@ void OnTick() {
    // Set TP from BE for sell series
    if(sellCount > 0 && TpFromBEPips > 0) {
       double sellBE = sellAvgPrice;
-      double sellTP = NormalizeDouble(sellBE - pip.Pips(TpFromBEPips), _Digits);
+      double sellTP = NormalizeDouble(sellBE - ScaledPips(TpFromBEPips), _Digits);
       for(int i = 0; i < PositionsTotal(); i++) {
          ulong ticket = PositionGetTicket(i);
          if(ticket == 0) continue;
@@ -705,16 +725,16 @@ void OnTick() {
 
          if(ptype == POSITION_TYPE_BUY) {
             double level = CalcTrailingLevel(1, Bid, TrailingType);
-            if(level >= buyAvgPrice + pip.Pips(MinTrailingProfit) &&
-               level > sl + pip.Pips(TrailingStepPips) &&
+            if(level >= buyAvgPrice + ScaledPips(MinTrailingProfit) &&
+               level > sl + ScaledPips(TrailingStepPips) &&
                Bid - level > stopsLevelPoints * pip.Point()) {
                if(level > sl)
                   trade.PositionModify(ticket, level, PositionGetDouble(POSITION_TP));
             }
          } else if(ptype == POSITION_TYPE_SELL) {
             double level = CalcTrailingLevel(-1, Ask, TrailingType);
-            if((level <= sellAvgPrice - pip.Pips(MinTrailingProfit) &&
-                level < sl - pip.Pips(TrailingStepPips)) ||
+            if((level <= sellAvgPrice - ScaledPips(MinTrailingProfit) &&
+                level < sl - ScaledPips(TrailingStepPips)) ||
                (sl == 0.0 && level - Ask > stopsLevelPoints * pip.Point())) {
                if(level < sl || (sl == 0.0 && level != 0.0))
                   trade.PositionModify(ticket, level, PositionGetDouble(POSITION_TP));
@@ -762,8 +782,8 @@ void OnTick() {
    bool riskOK = riskGuard.CanOpenNewPosition();
 
    // EMA range entry logic
-   double emaUpper = emaValue + pip.Pips(EmaRangePips);
-   double emaLower = emaValue - pip.Pips(EmaRangePips);
+   double emaUpper = emaValue + pip.Pips(EmaRangePoints);
+   double emaLower = emaValue - pip.Pips(EmaRangePoints);
    bool priceAboveRange = (Bid > emaUpper);
    bool priceBelowRange = (Ask < emaLower);
 
@@ -790,7 +810,7 @@ void OnTick() {
          }
       } else {
          double lastBuyPrice = buyLowPrice;
-         if(Ask <= NormalizeDouble(lastBuyPrice - pip.Pips(DcaStepPips), _Digits)) {
+         if(Ask <= NormalizeDouble(lastBuyPrice - ScaledPips(DcaStepPips), _Digits)) {
             double lot = CalcNextLot(buyCount);
             double margin = 0;
             if(OrderCalcMargin(ORDER_TYPE_BUY, _Symbol, lot, Ask, margin) && margin > 0) {
@@ -824,7 +844,7 @@ void OnTick() {
          }
       } else {
          double lastSellPrice = sellHighPrice;
-         if(Bid >= NormalizeDouble(lastSellPrice + pip.Pips(DcaStepPips), _Digits)) {
+         if(Bid >= NormalizeDouble(lastSellPrice + ScaledPips(DcaStepPips), _Digits)) {
             double lot = CalcNextLot(sellCount);
             double margin = 0;
             if(OrderCalcMargin(ORDER_TYPE_SELL, _Symbol, lot, Bid, margin) && margin > 0) {
@@ -864,7 +884,8 @@ void OnTick() {
       SetChartLabel("Profit", "", 5, 0, clrGray);
 
    if(emaValue > 0)
-      SetChartLabel("EMAInfo", StringFormat("EMA(%d)=%.5f  Range: %.5f - %.5f", EmaPeriod, emaValue, emaLower, emaUpper), 5, 0, clrAqua);
+      SetChartLabel("EMAInfo", StringFormat("EMA(%d)=%.5f Range: %.5f - %.5f [scale:%d]",
+                 EmaPeriod, emaValue, emaLower, emaUpper, pipScale), 5, 0, clrAqua);
 
    SetChartLabel("DailyPL", StringFormat("Daily P/L: %.2f / %.2f%s",
                  dailyClosedProfit, DailyTpTarget,

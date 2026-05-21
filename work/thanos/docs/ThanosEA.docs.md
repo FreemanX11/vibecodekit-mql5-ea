@@ -1,12 +1,14 @@
 ---
 ea_name: ThanosEA
-ea_version: 0.1.0
+ea_version: 2.1.1
 kit_version: 1.0.1
-built_at: 2026-05-20T20:58:02Z
+built_at: 2026-05-21T04:59:16Z
 built_from: work/thanos/ea-spec.yaml
 symbol: EURUSD
 timeframe: H1
 mode: enterprise
+compile: PASS
+gate: PASS
 ---
 
 # ThanosEA
@@ -36,7 +38,7 @@ Quét → Soạn → Kiểm → **Phát hành**
 | - | `AllowSell` | `bool` | `true` |  |
 | - | `EAMakesFirstOrder` | `bool` | `true` |  |
 | - | `EmaPeriod` | `int` | `20` |  |
-| - | `EmaRangePips` | `int` | `3000` |  |
+| - | `EmaRangePoints` | `int` | `3000` |  |
 | - | `EmaTimeframe` | `ENUM_TIMEFRAMES` | `PERIOD_CURRENT` |  |
 | - | `DcaStepPips` | `int` | `30` |  |
 | - | `StartLot` | `double` | `0.01` |  |
@@ -47,7 +49,7 @@ Quét → Soạn → Kiểm → **Phát hành**
 | - | `DailyTpTarget` | `double` | `50.0` |  |
 | - | `EnableTrimFarthest` | `bool` | `true` |  |
 | - | `EnableTrimMostLoss` | `bool` | `true` |  |
-| - | `TrimTpPips` | `int` | `1000` |  |
+| - | `TrimTpPoints` | `int` | `1000` |  |
 | - | `TrailingType` | `int` | `0` |  |
 | - | `TrailingStepPips` | `int` | `0` |  |
 | - | `MinTrailingProfit` | `int` | `10` |  |
