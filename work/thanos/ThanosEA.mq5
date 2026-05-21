@@ -3,6 +3,12 @@
 //|   Grid DCA EA — rebuilt via vibecodekit-mql5-ea enterprise pipeline|
 //|   Original: Grid_Converted (cmillion, MQL4→MQL5)                 |
 //|                                                                   |
+//|   v2.2 — Async close optimization:                              |
+//|     CloseAll via CAsyncTradeManager v2 (event-driven, no Sleep)  |
+//|     OnTradeTransaction reconciliation for close confirmations    |
+//|     Stale request cleanup in OnTick                              |
+//|     Async trade stats on deinit                                  |
+//|                                                                   |
 //|   v2.1 — Feature expansion:                                       |
 //|     EMA range entry (± points from EMA baseline)                  |
 //|     DCA lot = initial * multiplier^count                          |
@@ -21,6 +27,7 @@
 #include <CSpreadGuard.mqh>
 #include <CMfeMaeLogger.mqh>
 #include <CRiskGuard.mqh>
+#include <CAsyncTradeManager.mqh>
 
 //=== Group 1: Trade Direction ===//
 sinput bool   AllowBuy           = true;
@@ -79,11 +86,12 @@ const int ARROW_RIGHT_PRICE = 220;
 #define DIR_SELL  1
 
 //=== Global Objects ===//
-CTrade         trade;
-CPipNormalizer pip;
-CSpreadGuard   spreadGuard;
-CMfeMaeLogger  mfeLogger;
-CRiskGuard     riskGuard;
+CTrade              trade;
+CPipNormalizer      pip;
+CSpreadGuard        spreadGuard;
+CMfeMaeLogger       mfeLogger;
+CRiskGuard          riskGuard;
+CAsyncTradeManager  async_tm;
 
 //=== Global State ===//
 string    accountCurrency    = "";
@@ -328,72 +336,45 @@ void DeleteAllPendingOrders() {
    }
 }
 
-//=== Close Positions by Direction ===//
+//=== Close Positions by Direction (async via CAsyncTradeManager v2) ===//
 int ClosePositionsByDirection(int direction) {
-   int attempts = 0;
-   while(true) {
-      for(int i = PositionsTotal() - 1; i >= 0; i--) {
-         ulong ticket = PositionGetTicket(i);
-         if(ticket > 0) {
-            if(PositionGetString(POSITION_SYMBOL) == _Symbol &&
-               PositionGetInteger(POSITION_MAGIC) == MagicNumber) {
-               ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-               if((ptype == POSITION_TYPE_BUY && (direction == 1 || direction == 0)) ||
-                  (ptype == POSITION_TYPE_SELL && (direction == -1 || direction == 0))) {
-                  double profit = PositionGetDouble(POSITION_PROFIT);
-                  if(trade.PositionClose(ticket)) {
-                     dailyClosedProfit += profit;
-                     Comment(StringFormat("Closed #%I64d profit %.2f %s",
-                             ticket, profit, TimeToString(TimeCurrent(), TIME_SECONDS)));
-                  }
-               }
-            }
-         }
-      }
-      for(int i = OrdersTotal() - 1; i >= 0; i--) {
-         ulong ticket = OrderGetTicket(i);
-         if(ticket > 0) {
-            if(OrderGetString(ORDER_SYMBOL) == _Symbol &&
-               OrderGetInteger(ORDER_MAGIC) == MagicNumber) {
-               ENUM_ORDER_TYPE ot = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
-               if((ot == ORDER_TYPE_BUY_STOP && (direction == 1 || direction == 0)) ||
-                  (ot == ORDER_TYPE_SELL_STOP && (direction == -1 || direction == 0))) {
-                  trade.OrderDelete(ticket);
-               }
-            }
-         }
-      }
+   int sent = 0;
+   double closingProfit = 0.0;
 
-      int remaining = 0;
-      for(int i = 0; i < PositionsTotal(); i++) {
-         ulong ticket = PositionGetTicket(i);
-         if(ticket > 0 && PositionGetString(POSITION_SYMBOL) == _Symbol &&
-            PositionGetInteger(POSITION_MAGIC) == MagicNumber) {
-            ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-            if((ptype == POSITION_TYPE_BUY && (direction == 1 || direction == 0)) ||
-               (ptype == POSITION_TYPE_SELL && (direction == -1 || direction == 0)))
-               remaining++;
-         }
+   // Async close positions via CAsyncTradeManager
+   for(int i = PositionsTotal() - 1; i >= 0; i--) {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      if((ptype == POSITION_TYPE_BUY && (direction == 1 || direction == 0)) ||
+         (ptype == POSITION_TYPE_SELL && (direction == -1 || direction == 0))) {
+         closingProfit += PositionGetDouble(POSITION_PROFIT);
+         if(async_tm.SendCloseAsync(ticket))
+            sent++;
       }
-      for(int i = 0; i < OrdersTotal(); i++) {
-         ulong ticket = OrderGetTicket(i);
-         if(ticket > 0 && OrderGetString(ORDER_SYMBOL) == _Symbol &&
-            OrderGetInteger(ORDER_MAGIC) == MagicNumber) {
-            ENUM_ORDER_TYPE ot = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
-            if((ot == ORDER_TYPE_BUY_STOP && (direction == 1 || direction == 0)) ||
-               (ot == ORDER_TYPE_SELL_STOP && (direction == -1 || direction == 0)))
-               remaining++;
-         }
-      }
-      if(remaining == 0) break;
-      attempts++;
-      if(attempts > 10) {
-         Alert(_Symbol, " Failed to close all trades, remaining: ", remaining);
-         return 0;
-      }
-      Sleep(1000);
    }
-   return 1;
+
+   // Delete pending orders (sync — not latency-critical)
+   for(int i = OrdersTotal() - 1; i >= 0; i--) {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0) continue;
+      if(OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
+      if(OrderGetInteger(ORDER_MAGIC) != MagicNumber) continue;
+      ENUM_ORDER_TYPE ot = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+      if((ot == ORDER_TYPE_BUY_STOP && (direction == 1 || direction == 0)) ||
+         (ot == ORDER_TYPE_SELL_STOP && (direction == -1 || direction == 0))) {
+         trade.OrderDelete(ticket);
+      }
+   }
+
+   // Pre-compute daily profit (async close confirms via OnTradeTransaction)
+   dailyClosedProfit += closingProfit;
+
+   if(sent > 0)
+      PrintFormat("CloseAll async: sent %d close requests, est profit %.2f", sent, closingProfit);
+   return sent;
 }
 
 //=== Protective SL for DCA series (wide, non-interfering) ===//
@@ -531,6 +512,9 @@ int OnInit() {
    trade.SetDeviationInPoints((ulong)((_Digits == 5 || _Digits == 3) ? 30 : 3));
    trade.SetTypeFilling(ORDER_FILLING_RETURN);
 
+   int deviation = (_Digits == 5 || _Digits == 3) ? 30 : 3;
+   async_tm.Init((ulong)MagicNumber, 2, 5000000, deviation);
+
    spreadGuard.Init(pip, MaxSpreadPips * pipScale);
    mfeLogger.Init("ThanosEA_mfe_mae.csv");
    riskGuard.Init(DailyLossPct, MaxOpenPositions, FreezeOnDDPct);
@@ -589,6 +573,7 @@ int OnInit() {
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason) {
    if(emaHandle != INVALID_HANDLE) IndicatorRelease(emaHandle);
+   async_tm.PrintStats();
    ObjectsDeleteAll(0, 0, -1);
 }
 
@@ -599,6 +584,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
                         const MqlTradeRequest &request,
                         const MqlTradeResult &result) {
    mfeLogger.OnTradeTransaction(trans);
+   async_tm.OnTransactionResult(trans, request, result);
 }
 
 //+------------------------------------------------------------------+
@@ -607,6 +593,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 void OnTick() {
    riskGuard.OnTick();
    mfeLogger.OnTick();
+   async_tm.CleanupStale();
 
    // Daily TP reset on new day
    MqlDateTime dt;
