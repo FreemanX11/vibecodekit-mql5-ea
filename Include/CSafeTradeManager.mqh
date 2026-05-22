@@ -61,6 +61,7 @@ private:
       const string action = is_buy ? "BUY" : "SELL";
       string trade_symbol = symbol == "" ? _Symbol : symbol;
       m_trade.SetExpertMagicNumber(m_magic);
+      m_trade.SetMarginMode();
       m_trade.SetDeviationInPoints(m_deviation_points);
       m_trade.SetTypeFilling(_DetectFilling(trade_symbol));
 
@@ -104,6 +105,7 @@ public:
       m_retry_delay_ms   = retryDelayMs;
       m_deviation_points = deviationPoints;
       m_trade.SetExpertMagicNumber(m_magic);
+      m_trade.SetMarginMode();
       m_trade.SetDeviationInPoints(m_deviation_points);
      }
 
