@@ -20,6 +20,7 @@
 #include "CRiskGuard.mqh"
 #include "CMagicRegistry.mqh"
 #include "CSafeTradeManager.mqh"
+#include "CHistorySync.mqh"
 
 input long   InpMagic        = 80200;
 input double InpRiskMoney    = 100.0;
@@ -36,12 +37,14 @@ CPipNormalizer pip;
 CRiskGuard     risk;
 CMagicRegistry registry;
 CSafeTradeManager trade;
+CHistorySync     history;
 
 int h_rsi = INVALID_HANDLE;
 
 int OnInit(void)
   {
    if(!pip.Init(_Symbol)) return INIT_FAILED;
+   if(!history.EnsureBars(_Symbol, _Period, 300)) return INIT_FAILED;
    risk.Init(InpDailyLossPct, InpMaxPositions, 0.10);
    if(!registry.Check(InpMagic))
       registry.Reserve(InpMagic, "{{NAME}}");

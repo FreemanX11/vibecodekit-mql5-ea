@@ -17,9 +17,9 @@ def test_best_practice_detectors_are_all_wired():
     codes = {c for c, _ in lint_best_practice.BEST_PRACTICE_DETECTORS}
     expected = {"AP-2", "AP-4", "AP-6", "AP-7", "AP-8", "AP-9", "AP-10",
                 "AP-11", "AP-12", "AP-13", "AP-14", "AP-16", "AP-19",
-                "AP-22", "AP-23"}
+                "AP-22", "AP-23", "AP-24"}
     assert codes == expected
-    assert len(codes) == 15
+    assert len(codes) == 16
 
 
 def test_ap2_flags_tight_stoploss():
@@ -151,6 +151,31 @@ def test_ap23_clean_with_safetrade_manager():
         "  }\n"
     )
     assert _findings_for(src, "AP-23") == []
+
+
+def test_ap24_flags_history_access_without_sync_guard():
+    src = (
+        "// digits-tested: 5,3\n"
+        "int h_fast;\n"
+        "int OnInit(){ h_fast = iMA(_Symbol, _Period, 20, 0, MODE_EMA, PRICE_CLOSE); return INIT_SUCCEEDED; }\n"
+        "void OnTick(){ double fast[1]; CopyBuffer(h_fast, 0, 0, 1, fast); }\n"
+    )
+    findings = _findings_for(src, "AP-24")
+    assert len(findings) == 1
+    assert findings[0].severity == "WARN"
+
+
+def test_ap24_clean_with_history_sync_guard():
+    src = (
+        "// digits-tested: 5,3\n"
+        '#include "CHistorySync.mqh"\n'
+        "CHistorySync history;\n"
+        "int h_fast;\n"
+        "int OnInit(){ if(!history.EnsureBars(_Symbol, _Period, 300)) return INIT_FAILED;"
+        " h_fast = iMA(_Symbol, _Period, 20, 0, MODE_EMA, PRICE_CLOSE); return INIT_SUCCEEDED; }\n"
+        "void OnTick(){ double fast[1]; CopyBuffer(h_fast, 0, 0, 1, fast); }\n"
+    )
+    assert _findings_for(src, "AP-24") == []
 
 
 def test_ap22_skips_service_programs():
