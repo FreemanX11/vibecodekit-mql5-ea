@@ -191,7 +191,7 @@ stack overrides) lives at `scripts/vibecodekit_mql5/spec_schema.py`;
 recognisers for `mql5-spec-from-prompt` are tabulated in
 [`devin-chat-driven-build.md`](devin-chat-driven-build.md#what-the-parser-understands).
 
-### 3.4. Verify (11)
+### 3.4. Verify (12)
 
 ```bash
 # Code-quality (run anytime; no XML needed)

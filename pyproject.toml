@@ -58,7 +58,7 @@ mql5-onnx-export = "vibecodekit_mql5.onnx_export:main"
 mql5-onnx-embed = "vibecodekit_mql5.onnx_embed:main"
 mql5-llm-context = "vibecodekit_mql5.llm_context:main"
 mql5-forge-init = "vibecodekit_mql5.forge_init:main"
-# Verify (11)
+# Verify (12)
 mql5-compile = "vibecodekit_mql5.compile:main"
 mql5-lint = "vibecodekit_mql5.lint:main"
 mql5-method-hiding-check = "vibecodekit_mql5.method_hiding_check:main"

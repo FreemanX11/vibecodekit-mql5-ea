@@ -213,7 +213,7 @@ overrides) nằm ở `scripts/vibecodekit_mql5/spec_schema.py`. Bảng
 recogniser của `mql5-spec-from-prompt` có ở
 [`devin-chat-driven-build.md`](devin-chat-driven-build.md#what-the-parser-understands).
 
-### 3.4. Verify (11 lệnh)
+### 3.4. Verify (12 lệnh)
 
 ```bash
 # 1. Compile qua MetaEditor (Wine trên Linux)
