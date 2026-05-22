@@ -112,6 +112,25 @@ def detect_ap10(path: str, raw: str, src: str) -> list[Finding]:
     return out
 
 
+# ─── AP-23 CTrade-no-retcode ─────────────────────────────────────────────────
+_CTRADE_NO_RETCODE = re.compile(r"\b\w+\.(?:Buy|Sell)\s*\(")
+
+
+def detect_ap23(path: str, raw: str, src: str) -> list[Finding]:
+    out: list[Finding] = []
+    if "CSafeTradeManager" in src or "CAsyncTradeManager" in src:
+        return out
+    for m in _CTRADE_NO_RETCODE.finditer(src):
+        head = src[max(0, m.start() - 120):m.start()].lower()
+        tail = src[m.end():m.end() + 300].lower()
+        if "resultretcode" not in head + tail and "retcode" not in head + tail:
+            line, col = _line_col(src, m.start())
+            out.append(Finding(path, line, col, "WARN", "AP-23",
+                               "CTrade.Buy/Sell without ResultRetcode check"))
+            break
+    return out
+
+
 # ─── AP-11 Mode-blind (netting/hedging) ──────────────────────────────────────
 def detect_ap11(path: str, raw: str, src: str) -> list[Finding]:
     if re.search(r"\bPositionSelect\b|\bOrderSend\b", src) and not re.search(
@@ -248,4 +267,5 @@ BEST_PRACTICE_DETECTORS: list[tuple[str, Detector]] = [
     ("AP-16", detect_ap16),
     ("AP-19", detect_ap19),
     ("AP-22", detect_ap22),
+    ("AP-23", detect_ap23),
 ]

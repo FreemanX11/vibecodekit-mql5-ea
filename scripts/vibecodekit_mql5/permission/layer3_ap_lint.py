@@ -2,7 +2,7 @@
 
 Invokes the Phase A linter (`vibecodekit_mql5.lint`) and asserts none of
 the 8 critical anti-patterns are flagged as ERROR. WARN-level findings
-(the 13 best-practice AP added in Phase C) do **not** fail this layer.
+(best-practice AP added in Phase C+) do **not** fail this layer.
 """
 
 from __future__ import annotations
