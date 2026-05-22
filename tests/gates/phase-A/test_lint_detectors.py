@@ -40,6 +40,12 @@ def test_detector_ap1_uses_safetrade_sl_argument_index():
     assert "AP-1" not in _codes(good)
 
 
+def test_safe_trade_manager_sets_account_margin_mode():
+    repo_root = Path(__file__).resolve().parents[3]
+    body = (repo_root / "Include" / "CSafeTradeManager.mqh").read_text(encoding="utf-8")
+    assert "SetMarginMode()" in body
+
+
 def test_detector_ap3_lot_fixed():
     codes = [f.code for f in _findings("ap_03_lot_fixed.mq5")]
     assert "AP-3" in codes
