@@ -12,7 +12,7 @@ No master `/mql5` router — every command stands alone.
 ## Discovery (4)
 - `/mql5-scan`     — survey project tree, classify artefacts
 - `/mql5-survey`   — match free-text strategy → scaffold archetype
-- `/mql5-doctor`   — installation + environment health check
+- `/mql5-doctor`   — installation + environment health check (use `--soft` for docs/lint-only CI without Wine: Wine/MetaEditor/terminal probes become warnings, exit 0)
 - `/mql5-audit`    — run 70-test conformance battery
 
 ## Plan (4)
