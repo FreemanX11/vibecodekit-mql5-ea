@@ -154,11 +154,9 @@ _RAW_DELETE = re.compile(r"(?<!SAFE_)\bdelete\s+\w+\s*;")
 
 def detect_ap25(path: str, raw: str, src: str) -> list[Finding]:
     out: list[Finding] = []
-    if "SAFE_DELETE" in src:
-        return out
     for m in _RAW_DELETE.finditer(src):
         head = src[max(0, m.start() - 160):m.start()]
-        if "CheckPointer" in head or "POINTER_DYNAMIC" in head:
+        if "SAFE_DELETE" in head or "CheckPointer" in head or "POINTER_DYNAMIC" in head:
             continue
         line, col = _line_col(src, m.start())
         out.append(Finding(path, line, col, "WARN", "AP-25",
