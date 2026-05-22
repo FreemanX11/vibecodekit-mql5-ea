@@ -271,7 +271,7 @@ def test_verify_lint_best_practice_returns_grouped_findings() -> None:
         # All WARN-tier AP codes must appear as keys.
         for code in ("AP-2", "AP-4", "AP-6", "AP-7", "AP-8", "AP-9", "AP-10",
                      "AP-11", "AP-12", "AP-13", "AP-14", "AP-16", "AP-19",
-                     "AP-22", "AP-23", "AP-24"):
+                     "AP-22", "AP-23", "AP-24", "AP-25"):
             assert code in payload["by_code"], code
 
 

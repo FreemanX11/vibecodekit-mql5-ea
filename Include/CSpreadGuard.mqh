@@ -13,6 +13,7 @@
 #define VCK_CSPREADGUARD_MQH
 
 #include "CPipNormalizer.mqh"
+#include "CMemorySafety.mqh"
 
 class CSpreadGuard
   {
@@ -33,7 +34,7 @@ public:
 
    double   CurrentSpreadPips(void) const
      {
-      if(m_pip == NULL) return 0.0;
+      if(m_pip == NULL || !POINTER_IS_VALID(m_pip)) return 0.0;
       MqlTick t;
       if(!SymbolInfoTick(m_pip.Symbol(), t)) return 0.0;
       double spread_price = t.ask - t.bid;
@@ -42,7 +43,7 @@ public:
 
    bool     IsTradable(void)
      {
-      if(m_pip == NULL || m_max_pips <= 0) return true;
+      if(m_pip == NULL || !POINTER_IS_VALID(m_pip) || m_max_pips <= 0) return true;
       double cur = CurrentSpreadPips();
       if(cur > m_max_pips)
         {
