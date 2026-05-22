@@ -270,7 +270,12 @@ def parse_opt_xml(text: str) -> list[OptResult]:
             # Trailing empty rows are common in Excel exports.
             continue
         record = dict(zip(header, cells))
-        pass_num = _try_int(record.get("Pass", "")) or idx
+        # MT5 optimization passes are 0-indexed, so we cannot use
+        # ``_try_int(...) or idx`` here — that would silently renumber
+        # the pass 0 row to ``idx == 1`` and collide with pass 1. Treat
+        # an absent / unparseable cell as the only fallback to idx.
+        pass_raw = _try_int(record.get("Pass", ""))
+        pass_num = pass_raw if pass_raw is not None else idx
         params: dict[str, str] = {}
         metrics: dict[str, float] = {}
         for name, raw in record.items():
@@ -333,11 +338,18 @@ def _try_float(raw: str) -> float | None:
         return None
 
 
-def _try_int(raw: str) -> int:
+def _try_int(raw: str) -> int | None:
+    """Best-effort int parse; ``None`` distinguishes an absent cell from a 0.
+
+    The optimization report uses 0-indexed pass numbers, so callers must
+    NOT collapse ``0`` and "missing" into the same return.
+    """
+    if raw is None or raw == "":
+        return None
     try:
         return int(float(raw))
     except (TypeError, ValueError):
-        return 0
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

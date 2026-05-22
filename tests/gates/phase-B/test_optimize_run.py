@@ -99,6 +99,71 @@ def test_parse_opt_xml_splits_metrics_from_params():
     assert "Pass" not in first.metrics
 
 
+def test_parse_opt_xml_preserves_pass_zero():
+    """MT5 optimization passes are 0-indexed. A row with Pass=0 must
+    stay 0 in the parsed result, not silently get renumbered to the
+    1-based row index — otherwise pass 0 and pass 1 collide.
+    """
+    raw = """<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="T">
+  <Table>
+   <Row>
+    <Cell><Data ss:Type="String">Pass</Data></Cell>
+    <Cell><Data ss:Type="String">Result</Data></Cell>
+    <Cell><Data ss:Type="String">InpA</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="Number">0</Data></Cell>
+    <Cell><Data ss:Type="Number">100</Data></Cell>
+    <Cell><Data ss:Type="Number">5</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="Number">1</Data></Cell>
+    <Cell><Data ss:Type="Number">200</Data></Cell>
+    <Cell><Data ss:Type="Number">7</Data></Cell>
+   </Row>
+  </Table>
+ </Worksheet>
+</Workbook>
+"""
+    rows = parse_opt_xml(raw)
+    assert [r.pass_num for r in rows] == [0, 1]
+    # Distinct values — the Pass=0 row did not collide with Pass=1.
+    assert len({r.pass_num for r in rows}) == 2
+
+
+def test_parse_opt_xml_falls_back_to_idx_when_pass_missing():
+    """If the Pass column is absent or unparseable, we still hand back
+    a unique 1-based identifier (the row index) so downstream callers
+    can address each row.
+    """
+    raw = """<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="T">
+  <Table>
+   <Row>
+    <Cell><Data ss:Type="String">Result</Data></Cell>
+    <Cell><Data ss:Type="String">InpA</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="Number">42</Data></Cell>
+    <Cell><Data ss:Type="Number">8</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="Number">99</Data></Cell>
+    <Cell><Data ss:Type="Number">11</Data></Cell>
+   </Row>
+  </Table>
+ </Worksheet>
+</Workbook>
+"""
+    rows = parse_opt_xml(raw)
+    assert [r.pass_num for r in rows] == [1, 2]
+
+
 def test_parse_opt_xml_handles_empty_table():
     empty_xml = """<?xml version="1.0"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
