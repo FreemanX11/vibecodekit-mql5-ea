@@ -8,9 +8,11 @@ Locks in:
 * ``substitute_placeholders`` resolves ``{spec.foo.bar:fmt}`` against a
   real ``EaSpec`` and rewrites ``{InpXxx}`` to backticked identifiers,
   leaving everything else untouched.
-* ``load_flow_narrative`` reads the bundled FLOW files for the two
-  Phase-1 archetypes (``trend/netting`` + ``portfolio-basket/{netting,
-  hedging}``).
+* ``load_flow_narrative`` reads the bundled FLOW-vi.md file for every
+  shipped archetype (Phase-1 + Phase-2A backfill = 23 archetypes total).
+  Each FLOW file must reference at least one ``{spec.…}`` placeholder
+  and every placeholder must resolve cleanly against a default
+  ``EaSpec``.
 * End-to-end through ``build_doc_content`` / ``render_markdown`` /
   ``render_html_document`` the new sections actually show up in the
   documents the user receives.
@@ -227,22 +229,53 @@ def test_substitute_placeholders_passes_through_unrelated_braces() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_flow_narrative_loads_for_phase1_archetypes() -> None:
-    """Phase-1 scope: ``trend/netting`` + ``portfolio-basket/{netting,
-    hedging}`` must each ship a Vietnamese FLOW file."""
-    for preset, stack in (
-        ("trend", "netting"),
-        ("portfolio-basket", "netting"),
-        ("portfolio-basket", "hedging"),
-    ):
-        md = load_flow_narrative(preset, stack, lang="vi")
-        assert md, f"FLOW-vi.md missing for {preset}/{stack}"
-        # Must reference at least one of the dynamic spec placeholders so
-        # the substitution layer has something to do at render time.
-        assert "{spec." in md, (
-            f"{preset}/{stack} FLOW-vi.md has no spec placeholders — "
-            "it should reference the EA's actual spec values"
-        )
+# Every archetype the kit ships must come with a Vietnamese FLOW
+# narrative so the generated docs include the "Cách EA chạy" section.
+# Phase-1 shipped 3 archetypes; Phase-2A backfilled the remaining 20.
+ALL_ARCHETYPES: tuple[tuple[str, str], ...] = (
+    ("arbitrage-stat", "python-bridge"),
+    ("breakout", "netting"),
+    ("dca", "hedging"),
+    ("grid", "hedging"),
+    ("hedging-multi", "hedging"),
+    ("hft-async", "netting"),
+    ("indicator-only", "netting"),
+    ("library", "netting"),
+    ("mean-reversion", "hedging"),
+    ("ml-onnx", "python-bridge"),
+    ("news-trading", "netting"),
+    ("portfolio-basket", "hedging"),
+    ("portfolio-basket", "netting"),
+    ("scalping", "hedging"),
+    ("service", "standalone"),
+    ("service-llm-bridge", "cloud-api"),
+    ("service-llm-bridge", "embedded-onnx-llm"),
+    ("service-llm-bridge", "self-hosted-ollama"),
+    ("stdlib", "hedging"),
+    ("stdlib", "netting"),
+    ("stdlib", "python-bridge"),
+    ("trend", "netting"),
+    ("wizard-composable", "netting"),
+)
+
+
+@pytest.mark.parametrize(("preset", "stack"), ALL_ARCHETYPES)
+def test_flow_narrative_loads_for_every_archetype(preset: str, stack: str) -> None:
+    """Every shipped archetype must ship a Vietnamese FLOW file.
+
+    Phase-2A backfilled the 20 archetypes that Phase-1 did not cover —
+    skipping one of them silently drops the "Cách EA chạy" section in
+    the rendered ``.docs.html``/``.docs.md`` so end users no longer see
+    the operating flow narrative they bought the kit for.
+    """
+    md = load_flow_narrative(preset, stack, lang="vi")
+    assert md, f"FLOW-vi.md missing for {preset}/{stack}"
+    # Must reference at least one of the dynamic spec placeholders so
+    # the substitution layer has something to do at render time.
+    assert "{spec." in md, (
+        f"{preset}/{stack} FLOW-vi.md has no spec placeholders — "
+        "it should reference the EA's actual spec values"
+    )
 
 
 def test_flow_narrative_missing_archetype_returns_none(tmp_path: Path) -> None:
@@ -254,14 +287,7 @@ def test_flow_narrative_missing_archetype_returns_none(tmp_path: Path) -> None:
 # Every FLOW file committed to the repo must use only placeholders that
 # resolve against a valid EaSpec — otherwise the rendered narrative
 # leaks ``—`` placeholders to end users.
-@pytest.mark.parametrize(
-    ("preset", "stack"),
-    [
-        ("trend", "netting"),
-        ("portfolio-basket", "netting"),
-        ("portfolio-basket", "hedging"),
-    ],
-)
+@pytest.mark.parametrize(("preset", "stack"), ALL_ARCHETYPES)
 def test_flow_narrative_placeholders_all_resolve(preset: str, stack: str) -> None:
     flow = load_flow_narrative(preset, stack, lang="vi")
     assert flow is not None
