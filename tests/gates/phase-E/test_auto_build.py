@@ -190,6 +190,49 @@ def test_run_pipeline_with_mocked_compile(tmp_path: Path, monkeypatch: pytest.Mo
     assert compile_stage.detail["ex5_path"].endswith(".ex5")
 
 
+def test_run_pipeline_can_package_green_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_compile_success(monkeypatch)
+    out = tmp_path / "build"
+    spec_path = _write_yaml_spec(tmp_path)
+    report = auto_build.run_pipeline(
+        dict(MINIMAL_SPEC),
+        out,
+        skip_compile=False,
+        skip_gate=True,
+        package_artifacts=True,
+        package_spec=spec_path,
+    )
+
+    assert report.ok is True
+    assert report.package is not None
+    assert report.package["ok"] is True
+    assert report.package["manifest_path"] == str(out / "manifest.json")
+    assert Path(report.package["zip_path"]).is_file()
+    assert (out / "manifest.json").is_file()
+    assert "runtime" in report.package["groups"]
+    assert "repro" in report.package["groups"]
+
+
+def test_run_pipeline_skips_package_after_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_compile_failure(monkeypatch)
+    out = tmp_path / "build"
+    report = auto_build.run_pipeline(
+        dict(MINIMAL_SPEC),
+        out,
+        skip_compile=False,
+        skip_gate=True,
+        package_artifacts=True,
+    )
+
+    assert report.ok is False
+    assert report.package == {"skipped": True, "reason": "pipeline failed"}
+    assert not (out / "manifest.json").exists()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # run_pipeline — fail-fast at each stage
 # ─────────────────────────────────────────────────────────────────────────────
@@ -327,6 +370,31 @@ def test_main_happy_path_returns_0(
     parsed = json.loads(stdout)
     assert parsed["ok"] is True
     assert parsed["out_dir"] == str(out_dir)
+
+
+def test_main_package_flag_writes_manifest_and_zip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    _patch_compile_success(monkeypatch)
+    from vibecodekit_mql5.permission import orchestrator as orch_mod
+    monkeypatch.setattr(
+        orch_mod,
+        "run",
+        lambda _ns: orch_mod.OrchestratorReport(mode="personal", ok=True, layers=[]),
+    )
+    spec_path = _write_yaml_spec(tmp_path)
+    out_dir = tmp_path / "out"
+    rc = auto_build.main([
+        "--spec", str(spec_path),
+        "--out-dir", str(out_dir),
+        "--package",
+    ])
+
+    assert rc == 0
+    parsed = json.loads(capsys.readouterr().out)
+    assert parsed["package"]["ok"] is True
+    assert (out_dir / "manifest.json").is_file()
+    assert (out_dir / "out-ship.zip").is_file()
 
 
 def test_main_default_out_dir_is_cwd_slash_name(

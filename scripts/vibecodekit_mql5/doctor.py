@@ -1,9 +1,10 @@
 """/mql5-doctor — kit installation + environment health check.
 
 Phase E command.  Validates that everything the kit needs is reachable
-on the current machine: Python toolchain, ``wine`` for MetaEditor,
-``MetaEditor.exe`` itself, the kit's package importability, and the
-presence of the 28 reference docs + 11 scaffold archetypes.
+on the current machine: Python toolchain, Wine when running MetaEditor
+through Wine, ``MetaEditor.exe`` itself, the kit's package
+importability, and the presence of the 28 reference docs + 11 scaffold
+archetypes.
 
 Exit code 0 = healthy.  Non-zero = at least one check failed.  The
 JSON output enumerates every check so a CI workflow can decide which
@@ -88,9 +89,18 @@ def run_doctor(repo_root: Path = REPO_ROOT) -> DoctorReport:
     rep = DoctorReport()
     rep.add("python-version", sys.version_info >= (3, 10),
             f"{sys.version_info.major}.{sys.version_info.minor}")
-    rep.add("wine", shutil.which("wine") is not None, "PATH")
 
     metaeditor = _probe(_METAEDITOR_PROBES)
+    needs_wine = not sys.platform.startswith("win") or (
+        metaeditor is not None
+        and ".wine" in metaeditor.as_posix().lower()
+    )
+    wine = shutil.which("wine")
+    rep.add(
+        "wine",
+        wine is not None if needs_wine else True,
+        str(wine) if wine else ("not required on Windows native" if not needs_wine else "PATH"),
+    )
     rep.add(
         "metaeditor-bin",
         metaeditor is not None,

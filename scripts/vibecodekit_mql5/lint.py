@@ -57,14 +57,22 @@ def _line_col(src: str, idx: int) -> tuple[int, int]:
 # Detectors
 # ─────────────────────────────────────────────────────────────────────────────
 
-# AP-1 No-SL: trade.Buy/Sell with 1-3 args (no sl) OR OrderSend with sl=0.
-_TRADE_NO_SL = re.compile(r"\b\w+\.(?:Buy|Sell)\s*\(([^)]*)\)")
+# AP-1 No-SL: trade.Buy/Sell without a non-zero stop-loss argument.
+_TRADE_NO_SL = re.compile(r"\b(?P<obj>\w+)\.(?:Buy|Sell)\s*\((?P<args>[^)]*)\)")
+
+
+def _safe_trade_objects(src: str) -> set[str]:
+    pattern = re.compile(r"\bCSafeTradeManager\s+(\w+)\s*;")
+    return {m.group(1) for m in pattern.finditer(src)}
+
 
 def detect_ap1(path: str, raw: str, src: str) -> list[Finding]:
     out: list[Finding] = []
+    safe_trade = _safe_trade_objects(src)
     for m in _TRADE_NO_SL.finditer(src):
-        args = [a.strip() for a in m.group(1).split(",")]
-        sl_present = len(args) >= 4 and args[3] not in {"", "0", "0.0"}
+        args = [a.strip() for a in m.group("args").split(",")]
+        sl_idx = 2 if m.group("obj") in safe_trade else 3
+        sl_present = len(args) > sl_idx and args[sl_idx] not in {"", "0", "0.0"}
         if not sl_present:
             line, col = _line_col(src, m.start())
             out.append(Finding(path, line, col, "ERROR", "AP-1",
@@ -187,7 +195,7 @@ _ALL_DETECTORS = [
     ("AP-21", detect_ap21),
 ]
 
-# Phase C adds 13 best-practice detectors (AP-2/4/6-14/16/19) as WARN-only.
+# Phase C+ adds best-practice detectors as WARN-only.
 # They live in a separate module to keep this file under its 200-LOC ceiling.
 try:
     from .lint_best_practice import BEST_PRACTICE_DETECTORS

@@ -16,10 +16,11 @@
 #property version   "1.00"
 #property strict
 
-#include <Trade/Trade.mqh>
 #include "CPipNormalizer.mqh"
 #include "CRiskGuard.mqh"
 #include "CMagicRegistry.mqh"
+#include "CSafeTradeManager.mqh"
+#include "CHistorySync.mqh"
 
 input long   InpMagic        = 80100;
 input double InpRiskMoney    = 100.0;
@@ -37,7 +38,8 @@ sinput int InpEmaSlowPeriod = 200;
 CPipNormalizer pip;
 CRiskGuard     risk;
 CMagicRegistry registry;
-CTrade         trade;
+CSafeTradeManager trade;
+CHistorySync     history;
 
 // MA handles — created once in OnInit (iMA returns a handle, not a value).
 int h_fast = INVALID_HANDLE;
@@ -46,10 +48,11 @@ int h_slow = INVALID_HANDLE;
 int OnInit(void)
   {
    if(!pip.Init(_Symbol)) return INIT_FAILED;
+   if(!history.EnsureBars(_Symbol, _Period, 300)) return INIT_FAILED;
    risk.Init(InpDailyLossPct, InpMaxPositions, 0.10);
    if(!registry.Check(InpMagic))
       registry.Reserve(InpMagic, "{{NAME}}");
-   trade.SetExpertMagicNumber((ulong)InpMagic);
+   trade.Init((ulong)InpMagic);
    h_fast = iMA(_Symbol, _Period, InpEmaFastPeriod, 0, MODE_EMA, PRICE_CLOSE);
    h_slow = iMA(_Symbol, _Period, InpEmaSlowPeriod, 0, MODE_EMA, PRICE_CLOSE);
    if(h_fast == INVALID_HANDLE || h_slow == INVALID_HANDLE) return INIT_FAILED;
@@ -102,12 +105,12 @@ void OnTick(void)
      {
       double sl = ask - sl_dist;
       double tp = ask + tp_dist;
-      trade.Buy(lots, _Symbol, 0.0, sl, tp);
+      trade.Buy(lots, _Symbol, sl, tp);
      }
    else if(IsSellSignal(fast, slow))
      {
       double sl = bid + sl_dist;
       double tp = bid - tp_dist;
-      trade.Sell(lots, _Symbol, 0.0, sl, tp);
+      trade.Sell(lots, _Symbol, sl, tp);
      }
   }

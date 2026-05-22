@@ -268,10 +268,10 @@ def test_verify_lint_best_practice_returns_grouped_findings() -> None:
         # WARN-only tier: ok is informational only and stays True.
         assert payload["ok"] is True
         assert "by_code" in payload
-        # All 14 AP codes from the WARN tier must appear as keys.
+        # All WARN-tier AP codes must appear as keys.
         for code in ("AP-2", "AP-4", "AP-6", "AP-7", "AP-8", "AP-9", "AP-10",
                      "AP-11", "AP-12", "AP-13", "AP-14", "AP-16", "AP-19",
-                     "AP-22"):
+                     "AP-22", "AP-23", "AP-24"):
             assert code in payload["by_code"], code
 
 

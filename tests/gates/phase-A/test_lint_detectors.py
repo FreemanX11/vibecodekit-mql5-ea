@@ -23,6 +23,23 @@ def test_detector_ap1_no_sl():
     assert "AP-1" in codes
 
 
+def test_detector_ap1_uses_safetrade_sl_argument_index():
+    bad = (
+        "// digits-tested: 5,3\n"
+        '#include "CSafeTradeManager.mqh"\n'
+        "CSafeTradeManager trade;\n"
+        "void OnTick(){ trade.Buy(0.1, _Symbol, 0.0, 1.234); }\n"
+    )
+    good = (
+        "// digits-tested: 5,3\n"
+        '#include "CSafeTradeManager.mqh"\n'
+        "CSafeTradeManager trade;\n"
+        "void OnTick(){ trade.Buy(0.1, _Symbol, 1.0, 0.0); }\n"
+    )
+    assert "AP-1" in _codes(bad)
+    assert "AP-1" not in _codes(good)
+
+
 def test_detector_ap3_lot_fixed():
     codes = [f.code for f in _findings("ap_03_lot_fixed.mq5")]
     assert "AP-3" in codes

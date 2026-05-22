@@ -16,10 +16,11 @@
 #property version   "1.00"
 #property strict
 
-#include <Trade/Trade.mqh>
 #include "CPipNormalizer.mqh"
 #include "CRiskGuard.mqh"
 #include "CMagicRegistry.mqh"
+#include "CSafeTradeManager.mqh"
+#include "CHistorySync.mqh"
 
 input long   InpMagic        = 80700;
 input double InpRiskMoney    = 100.0;
@@ -35,17 +36,19 @@ sinput int InpAtrMinPoints    = 30;
 CPipNormalizer pip;
 CRiskGuard     risk;
 CMagicRegistry registry;
-CTrade         trade;
+CSafeTradeManager trade;
+CHistorySync     history;
 
 int h_atr = INVALID_HANDLE;
 
 int OnInit(void)
   {
    if(!pip.Init(_Symbol)) return INIT_FAILED;
+   if(!history.EnsureBars(_Symbol, _Period, 300)) return INIT_FAILED;
    risk.Init(InpDailyLossPct, InpMaxPositions, 0.10);
    if(!registry.Check(InpMagic))
       registry.Reserve(InpMagic, "{{NAME}}");
-   trade.SetExpertMagicNumber((ulong)InpMagic);
+   trade.Init((ulong)InpMagic);
    h_atr = iATR(_Symbol, _Period, InpAtrPeriod);
    if(h_atr == INVALID_HANDLE) return INIT_FAILED;
    Print("{{NAME}} initialized: symbol=", _Symbol, " pip=", pip.Pip());
@@ -96,12 +99,12 @@ void OnTick(void)
      {
       double sl = ask - sl_dist;
       double tp = ask + tp_dist;
-      trade.Buy(lots, _Symbol, 0.0, sl, tp);
+      trade.Buy(lots, _Symbol, sl, tp);
      }
    else if(IsSellSignal(open1, close1))
      {
       double sl = bid + sl_dist;
       double tp = bid - tp_dist;
-      trade.Sell(lots, _Symbol, 0.0, sl, tp);
+      trade.Sell(lots, _Symbol, sl, tp);
      }
   }
