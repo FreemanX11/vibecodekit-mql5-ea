@@ -240,14 +240,14 @@ def run_pipeline(
             report, out_dir, skip=skip_dashboard,
             publish_cmd=publish_cmd,
         )
-        # Write the pipeline report to disk BEFORE packaging so the
-        # ship-zip captures the build/lint/compile/gate/docs/dashboard
-        # verdict. The on-disk file is rewritten after packaging to also
-        # surface the manifest summary in `report.package`; the copy
-        # inside the zip stays at the pre-package snapshot, which is the
-        # build-side verdict and what a reviewer reading the artifact
-        # actually needs.
-        _write_report(report, out_dir)
+        # When packaging is enabled, snapshot the pipeline report to disk
+        # BEFORE the packager runs so the ship-zip captures the
+        # build/lint/compile/gate/docs/dashboard verdict. The packager
+        # picks the file off disk; without this pre-write the zip ships
+        # without `auto-build-report.json` and a reviewer has no proof of
+        # which gates ran green.
+        if package_artifacts:
+            _write_report(report, out_dir)
         _maybe_attach_package(
             report,
             out_dir,
@@ -255,8 +255,14 @@ def run_pipeline(
             spec_path=package_spec,
             zip_path=package_zip,
         )
-        if package_artifacts:
-            _write_report(report, out_dir)
+        # Canonical on-disk write, run unconditionally so the file always
+        # reflects the post-package state of `report.package`. When
+        # `package_artifacts=False` this is `{"skipped": True}`; when the
+        # packager ran it's the manifest summary. The copy inside the
+        # zip (already sealed above) stays at the pre-package snapshot,
+        # which is the build-side verdict and avoids the sha256
+        # chicken-and-egg with `manifest.json`.
+        _write_report(report, out_dir)
         return report
 
     build_stage = _stage_build(spec, out_dir, force, ea_spec=ea_spec)

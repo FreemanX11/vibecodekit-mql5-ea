@@ -456,6 +456,43 @@ def test_main_package_zip_contains_auto_build_report(
     assert on_disk["package"]["artifact_count"] >= 1
 
 
+def test_main_on_disk_report_records_skipped_package_when_packaging_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """When `--package` is omitted, the on-disk report must still
+    advertise `package: {"skipped": True}`.
+
+    Regression for Devin Review BUG_0001 on PR #20: the original fix
+    snapshotted the report to disk BEFORE `_maybe_attach_package`, so
+    when the packager flipped `report.package` from `None` to
+    `{"skipped": True}` the change never made it back to disk. CI tools
+    that read `auto-build-report.json` (instead of stdout) then saw
+    `package: null`, contradicting the in-memory report `main()` prints.
+    """
+    _patch_compile_success(monkeypatch)
+    from vibecodekit_mql5.permission import orchestrator as orch_mod
+    monkeypatch.setattr(
+        orch_mod,
+        "run",
+        lambda _ns: orch_mod.OrchestratorReport(mode="personal", ok=True, layers=[]),
+    )
+    spec_path = _write_yaml_spec(tmp_path)
+    out_dir = tmp_path / "out"
+    rc = auto_build.main([
+        "--spec", str(spec_path),
+        "--out-dir", str(out_dir),
+    ])
+    assert rc == 0
+
+    stdout = capsys.readouterr().out
+    in_memory = json.loads(stdout)
+    on_disk = json.loads((out_dir / "auto-build-report.json").read_text("utf-8"))
+
+    # Both views must agree on the package block.
+    assert in_memory["package"] == {"skipped": True}
+    assert on_disk["package"] == {"skipped": True}
+
+
 def test_main_default_out_dir_is_cwd_slash_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
 ) -> None:
