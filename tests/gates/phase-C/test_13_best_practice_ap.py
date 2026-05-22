@@ -1,4 +1,4 @@
-"""Tests for the 13 best-practice anti-pattern detectors added to lint.py
+"""Tests for the best-practice anti-pattern detectors added to lint.py
 in Phase C. 5 sampled detectors plus a coverage check; total: 5 unit
 tests (the coverage check is itself one of them)."""
 
@@ -17,9 +17,9 @@ def test_best_practice_detectors_are_all_wired():
     codes = {c for c, _ in lint_best_practice.BEST_PRACTICE_DETECTORS}
     expected = {"AP-2", "AP-4", "AP-6", "AP-7", "AP-8", "AP-9", "AP-10",
                 "AP-11", "AP-12", "AP-13", "AP-14", "AP-16", "AP-19",
-                "AP-22"}
+                "AP-22", "AP-23"}
     assert codes == expected
-    assert len(codes) == 14
+    assert len(codes) == 15
 
 
 def test_ap2_flags_tight_stoploss():
@@ -125,6 +125,34 @@ def test_ap22_clean_when_ontick_places_async():
     assert findings == []
 
 
+def test_ap23_flags_ctrade_without_retcode_check():
+    src = (
+        "// digits-tested: 5,3\n"
+        "#include <Trade/Trade.mqh>\n"
+        "CTrade trade;\n"
+        "void OnTick(void)\n"
+        "  {\n"
+        "   trade.Buy(0.01, NULL, 0.0, 1.0, 2.0);\n"
+        "  }\n"
+    )
+    findings = _findings_for(src, "AP-23")
+    assert len(findings) == 1
+    assert findings[0].severity == "WARN"
+
+
+def test_ap23_clean_with_safetrade_manager():
+    src = (
+        "// digits-tested: 5,3\n"
+        '#include "CSafeTradeManager.mqh"\n'
+        "CSafeTradeManager trade;\n"
+        "void OnTick(void)\n"
+        "  {\n"
+        "   trade.Buy(0.01, _Symbol, 1.0, 2.0);\n"
+        "  }\n"
+    )
+    assert _findings_for(src, "AP-23") == []
+
+
 def test_ap22_skips_service_programs():
     """`#property service` programs use OnStart, not OnTick — out of scope."""
     src = (
@@ -144,9 +172,9 @@ def test_best_practice_findings_are_warn_only():
         "double sl_pips = 3;\n"
         "input int magic = 123456;\n"
         'string broker = "Exness";\n'
-        "#include <Trade/Trade.mqh>\n"
-        "CTrade trade;\n"
-        "void OnTick(){ trade.Buy(0.01, NULL, 0, 1.0); }\n"
+        '#include "CSafeTradeManager.mqh"\n'
+        "CSafeTradeManager trade;\n"
+        "void OnTick(){ trade.Buy(0.01, _Symbol, 1.0, 2.0); }\n"
     )
     findings = lint.lint_source("file.mq5", src)
     best_practice_codes = {c for c, _ in lint_best_practice.BEST_PRACTICE_DETECTORS}

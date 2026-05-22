@@ -16,10 +16,10 @@
 #property version   "1.00"
 #property strict
 
-#include <Trade/Trade.mqh>
 #include "CPipNormalizer.mqh"
 #include "CRiskGuard.mqh"
 #include "CMagicRegistry.mqh"
+#include "CSafeTradeManager.mqh"
 
 input long   InpMagic        = 80200;
 input double InpRiskMoney    = 100.0;
@@ -35,7 +35,7 @@ sinput double InpRsiOverbought = 70.0;
 CPipNormalizer pip;
 CRiskGuard     risk;
 CMagicRegistry registry;
-CTrade         trade;
+CSafeTradeManager trade;
 
 int h_rsi = INVALID_HANDLE;
 
@@ -45,7 +45,7 @@ int OnInit(void)
    risk.Init(InpDailyLossPct, InpMaxPositions, 0.10);
    if(!registry.Check(InpMagic))
       registry.Reserve(InpMagic, "{{NAME}}");
-   trade.SetExpertMagicNumber((ulong)InpMagic);
+   trade.Init((ulong)InpMagic);
    h_rsi = iRSI(_Symbol, _Period, InpRsiPeriod, PRICE_CLOSE);
    if(h_rsi == INVALID_HANDLE) return INIT_FAILED;
    Print("{{NAME}} initialized: symbol=", _Symbol, " pip=", pip.Pip());
@@ -88,12 +88,12 @@ void OnTick(void)
      {
       double sl = ask - sl_dist;
       double tp = ask + tp_dist;
-      trade.Buy(lots, _Symbol, 0.0, sl, tp);
+      trade.Buy(lots, _Symbol, sl, tp);
      }
    else if(IsSellSignal(rsi))
      {
       double sl = bid + sl_dist;
       double tp = bid - tp_dist;
-      trade.Sell(lots, _Symbol, 0.0, sl, tp);
+      trade.Sell(lots, _Symbol, sl, tp);
      }
   }
