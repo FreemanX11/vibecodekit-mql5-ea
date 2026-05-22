@@ -283,14 +283,41 @@ python -m vibecodekit_mql5.cloud_optimize  MyEA --symbol EURUSD --period H1 \
 python -m vibecodekit_mql5.canary          MyEA.ex5 --duration 30m  # or --journal mt5.log
 ```
 
-### 3.8. Ship (3)
+### 3.8. Ship (4)
 
 ```bash
 python -m vibecodekit_mql5.forge_pr feature-branch --target main
+
+# Package an mql5-auto-build output as a manifest + ship-zip
+python -m vibecodekit_mql5.package --out-dir ./dist --spec ea-spec.yaml
+# Or fold the packager into the build pipeline (only runs on a green build):
+python -m vibecodekit_mql5.auto_build --spec ea-spec.yaml --out-dir ./dist --package
+
 python -m vibecodekit_mql5.ship --tag v1.0.1 --dry-run
 python -m vibecodekit_mql5.ship --tag v1.0.1
 python -m vibecodekit_mql5.refine --diff change.patch
 ```
+
+**Ship .zip contents.** `mql5-package` (and `mql5-auto-build --package`)
+walks the `--out-dir`, classifies each file via
+`scripts/vibecodekit_mql5/package.py::classify_artifact`, writes a
+`manifest.json` with SHA-256 + group index, and bundles everything into
+`<out-dir>/<name>-ship.zip`. The bundle's groups:
+
+| Group     | Files                                                            | Why it ships                                                   |
+|-----------|------------------------------------------------------------------|----------------------------------------------------------------|
+| `runtime` | `*.ex5`, `Sets/*.set`                                            | Drop into MT5 to run the EA / Strategy Tester preset           |
+| `source`  | `*.mq5`, `*.mqh`, scaffold `README.md`                           | Recompile, audit source, review the scaffold                   |
+| `review`  | `auto-build-report.json`, `quality-matrix.html`, `*.docs.*`, `*.log` | Build / lint / compile / gate verdict + EA documentation     |
+| `repro`   | `*spec*.yaml/yml/json`, `*.onnx`, `*.csv`                        | Re-derive the build from the spec + ML / dataset side-inputs   |
+| _(root)_  | `manifest.json`                                                  | SHA-256 inventory + group index for the rest of the zip        |
+
+Files outside the classifier (random `.txt`, IDE droppings, the zip
+itself, an older `manifest.json`) are skipped. The `auto-build-report.json`
+copy inside the zip is the build-side snapshot (build / lint / compile /
+gate / docs / dashboard); the on-disk copy is rewritten after packaging
+so `report.package.ok` and `report.package.groups` are also queryable
+post-run.
 
 ### 3.9. Other (4)
 

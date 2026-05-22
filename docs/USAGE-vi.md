@@ -335,11 +335,16 @@ python -m vibecodekit_mql5.cloud_optimize MyEA \
 python -m vibecodekit_mql5.canary MyEA.ex5 --duration 30m
 ```
 
-### 3.8. Ship (3 lệnh)
+### 3.8. Ship (4 lệnh)
 
 ```bash
 # Push PR sang Algo Forge
 python -m vibecodekit_mql5.forge_pr feature-branch --target main
+
+# Đóng gói output của mql5-auto-build thành manifest + ship.zip
+python -m vibecodekit_mql5.package --out-dir ./dist --spec ea-spec.yaml
+# Hoặc bật trực tiếp trong pipeline build (chỉ chạy khi build xanh):
+python -m vibecodekit_mql5.auto_build --spec ea-spec.yaml --out-dir ./dist --package
 
 # Git tag + push (dry-run trước cho an toàn)
 python -m vibecodekit_mql5.ship --tag v1.0.1 --dry-run
@@ -349,6 +354,26 @@ python -m vibecodekit_mql5.ship --tag v1.0.1
 python -m vibecodekit_mql5.refine --diff change.patch
 # Output: { "classification": "tweak", "files_touched": ["set.set"], ... }
 ```
+
+**Nội dung file ship `.zip`.** `mql5-package` (và
+`mql5-auto-build --package`) duyệt `--out-dir`, phân loại file qua
+`scripts/vibecodekit_mql5/package.py::classify_artifact`, ghi
+`manifest.json` (SHA-256 + group index) rồi đóng gói thành
+`<out-dir>/<name>-ship.zip`. Các nhóm trong gói:
+
+| Group     | File                                                                | Mục đích                                                       |
+|-----------|---------------------------------------------------------------------|----------------------------------------------------------------|
+| `runtime` | `*.ex5`, `Sets/*.set`                                               | Copy vào MT5 để chạy EA / Strategy Tester preset               |
+| `source`  | `*.mq5`, `*.mqh`, `README.md` của scaffold                          | Recompile, audit source, review scaffold                       |
+| `review`  | `auto-build-report.json`, `quality-matrix.html`, `*.docs.*`, `*.log` | Verdict build / lint / compile / gate + tài liệu EA          |
+| `repro`   | `*spec*.yaml/yml/json`, `*.onnx`, `*.csv`                           | Tái tạo build từ spec + side-input ML / dataset                |
+| _(root)_  | `manifest.json`                                                     | SHA-256 inventory + group index của toàn bộ zip                |
+
+File ngoài bảng phân loại (`.txt` rời, file IDE, chính file `.zip`,
+`manifest.json` cũ) bị bỏ qua. Bản `auto-build-report.json` trong zip
+là snapshot build-side (build / lint / compile / gate / docs /
+dashboard); bản trên disk được ghi lại sau bước package nên có thêm
+`report.package.ok` + `report.package.groups` để CI grep được.
 
 ### 3.9. Other (4 lệnh)
 

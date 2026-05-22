@@ -240,6 +240,14 @@ def run_pipeline(
             report, out_dir, skip=skip_dashboard,
             publish_cmd=publish_cmd,
         )
+        # When packaging is enabled, snapshot the pipeline report to disk
+        # BEFORE the packager runs so the ship-zip captures the
+        # build/lint/compile/gate/docs/dashboard verdict. The packager
+        # picks the file off disk; without this pre-write the zip ships
+        # without `auto-build-report.json` and a reviewer has no proof of
+        # which gates ran green.
+        if package_artifacts:
+            _write_report(report, out_dir)
         _maybe_attach_package(
             report,
             out_dir,
@@ -247,6 +255,14 @@ def run_pipeline(
             spec_path=package_spec,
             zip_path=package_zip,
         )
+        # Canonical on-disk write, run unconditionally so the file always
+        # reflects the post-package state of `report.package`. When
+        # `package_artifacts=False` this is `{"skipped": True}`; when the
+        # packager ran it's the manifest summary. The copy inside the
+        # zip (already sealed above) stays at the pre-package snapshot,
+        # which is the build-side verdict and avoids the sha256
+        # chicken-and-egg with `manifest.json`.
+        _write_report(report, out_dir)
         return report
 
     build_stage = _stage_build(spec, out_dir, force, ea_spec=ea_spec)
@@ -475,7 +491,12 @@ def main(argv: list[str] | None = None) -> int:
         package_spec=args.spec,
         package_zip=args.package_zip,
     )
-    report_path = _write_report(report, out_dir)
+    # run_pipeline._finalize() already wrote auto-build-report.json (once
+    # pre-package so the zip captures the build verdict, and again after
+    # packaging when --package is set so the on-disk file also carries the
+    # manifest summary). Nothing left to write here — just emit the JSON
+    # body + a stderr breadcrumb for callers.
+    report_path = out_dir / "auto-build-report.json"
     print(json.dumps(report.to_dict(), indent=2))
     print(f"\nreport: {report_path}", file=sys.stderr)
     return 0 if report.ok else 1

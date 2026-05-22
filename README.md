@@ -1,7 +1,7 @@
 # vibecodekit-mql5-ea
 
 [![version](https://img.shields.io/badge/version-v1.0.1-blue)](https://github.com/BuildMqlCodekit-01/vibecodekit-mql5-ea/releases/tag/v1.0.1)
-[![tests](https://img.shields.io/badge/tests-848%20passing-success)]()
+[![tests](https://img.shields.io/badge/tests-853%20passing-success)]()
 [![lint](https://img.shields.io/badge/ruff-clean-success)]()
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
@@ -36,7 +36,7 @@
 | **Worked example** | `examples/ea-wizard-macd-sar-eurusd-h1-portfolio/` — 4-hour enterprise turnaround |
 | **Auto-build pipeline** | `mql5-spec-from-prompt` → `ea-spec.yaml` → `mql5-auto-build` (scan → build → lint → compile → permission-gate → dashboard) — single command, idempotent JSON report, optional publish-to-public-URL |
 | **Reproducible env** | `requirements.lock` (pip-compile pinned) + `Dockerfile.devin` (3-stage: base / wine / ci) |
-| **Test gate** | 848 tests passing across Phase 0/A/B/C/D/E |
+| **Test gate** | 853 tests passing across Phase 0/A/B/C/D/E |
 
 [^1]: `mt5-bridge` requires the `MetaTrader5` Python package, which only
     installs on Windows or Wine MT5 desktop. On a Linux Devin VM without
@@ -133,7 +133,7 @@ hot-spots:
 | **Ví dụ hoàn chỉnh** | `examples/ea-wizard-macd-sar-eurusd-h1-portfolio/` — turnaround 4 tiếng ở chế độ enterprise |
 | **Pipeline auto-build** | `mql5-spec-from-prompt` → `ea-spec.yaml` → `mql5-auto-build` (scan → build → lint → compile → permission-gate → dashboard) — 1 lệnh, JSON report idempotent, hook publish public URL tuỳ chọn |
 | **Môi trường reproducible** | `requirements.lock` (pip-compile pin chặt) + `Dockerfile.devin` (3 stage: base / wine / ci) |
-| **Test gate** | 848 test pass qua Phase 0/A/B/C/D/E |
+| **Test gate** | 853 test pass qua Phase 0/A/B/C/D/E |
 
 [^2]: `mt5-bridge` cần package `MetaTrader5` Python — chỉ cài được trên
     Windows hoặc Wine MT5 desktop. Trên Linux Devin VM, import fail và

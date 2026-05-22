@@ -397,6 +397,102 @@ def test_main_package_flag_writes_manifest_and_zip(
     assert (out_dir / "out-ship.zip").is_file()
 
 
+def test_main_package_zip_contains_auto_build_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """`auto-build-report.json` must land inside the ship zip.
+
+    Regression for the ordering bug where ``_write_report`` ran AFTER
+    ``_maybe_attach_package``: the packager never saw the report on disk,
+    so the zip shipped without the build verdict and ``manifest.json``
+    listed only 17 artifacts instead of 18. The report file is the only
+    pipeline-side proof a downstream reviewer has of which stages ran
+    green, so its absence is a Phase-E gate failure.
+    """
+    import zipfile
+
+    _patch_compile_success(monkeypatch)
+    from vibecodekit_mql5.permission import orchestrator as orch_mod
+    monkeypatch.setattr(
+        orch_mod,
+        "run",
+        lambda _ns: orch_mod.OrchestratorReport(mode="personal", ok=True, layers=[]),
+    )
+    spec_path = _write_yaml_spec(tmp_path)
+    out_dir = tmp_path / "out"
+    rc = auto_build.main([
+        "--spec", str(spec_path),
+        "--out-dir", str(out_dir),
+        "--package",
+    ])
+    assert rc == 0
+
+    zip_path = out_dir / "out-ship.zip"
+    assert zip_path.is_file()
+    with zipfile.ZipFile(zip_path) as zf:
+        names = set(zf.namelist())
+        assert "auto-build-report.json" in names, (
+            "ship.zip must include the pipeline verdict; got %s" % sorted(names)
+        )
+        # Verdict snapshot inside the zip is the build-side report; the
+        # package summary is deliberately absent there to avoid the
+        # report-recursion paradox (manifest.sha256 vs on-disk file).
+        zipped_report = json.loads(zf.read("auto-build-report.json"))
+        assert zipped_report["ok"] is True
+        zipped_stages = {s["name"] for s in zipped_report["stages"]}
+        assert {"build", "lint", "compile"}.issubset(zipped_stages)
+        assert zipped_report.get("package") in (None, {"skipped": True})
+
+        manifest_blob = json.loads(zf.read("manifest.json"))
+
+    review_paths = manifest_blob["groups"].get("review", [])
+    assert "auto-build-report.json" in review_paths, (
+        "manifest.groups.review must list the report; got %s" % review_paths
+    )
+    # On-disk version is rewritten post-package and DOES carry the
+    # manifest summary so CI can grep `report.package.ok`.
+    on_disk = json.loads((out_dir / "auto-build-report.json").read_text("utf-8"))
+    assert on_disk["package"]["ok"] is True
+    assert on_disk["package"]["artifact_count"] >= 1
+
+
+def test_main_on_disk_report_records_skipped_package_when_packaging_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """When `--package` is omitted, the on-disk report must still
+    advertise `package: {"skipped": True}`.
+
+    Regression for Devin Review BUG_0001 on PR #20: the original fix
+    snapshotted the report to disk BEFORE `_maybe_attach_package`, so
+    when the packager flipped `report.package` from `None` to
+    `{"skipped": True}` the change never made it back to disk. CI tools
+    that read `auto-build-report.json` (instead of stdout) then saw
+    `package: null`, contradicting the in-memory report `main()` prints.
+    """
+    _patch_compile_success(monkeypatch)
+    from vibecodekit_mql5.permission import orchestrator as orch_mod
+    monkeypatch.setattr(
+        orch_mod,
+        "run",
+        lambda _ns: orch_mod.OrchestratorReport(mode="personal", ok=True, layers=[]),
+    )
+    spec_path = _write_yaml_spec(tmp_path)
+    out_dir = tmp_path / "out"
+    rc = auto_build.main([
+        "--spec", str(spec_path),
+        "--out-dir", str(out_dir),
+    ])
+    assert rc == 0
+
+    stdout = capsys.readouterr().out
+    in_memory = json.loads(stdout)
+    on_disk = json.loads((out_dir / "auto-build-report.json").read_text("utf-8"))
+
+    # Both views must agree on the package block.
+    assert in_memory["package"] == {"skipped": True}
+    assert on_disk["package"] == {"skipped": True}
+
+
 def test_main_default_out_dir_is_cwd_slash_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
 ) -> None:
