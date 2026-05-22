@@ -17,6 +17,7 @@
 #include "CPipNormalizer.mqh"
 #include "CRiskGuard.mqh"
 #include "CMagicRegistry.mqh"
+#include "CHistorySync.mqh"
 #include "LlmCloudApiBridge.mqh"
 
 input long   InpMagic        = 81200;
@@ -34,11 +35,13 @@ sinput int   InpLlmTimeoutMs = 5000;
 CPipNormalizer       pip;
 CRiskGuard           risk;
 CMagicRegistry       registry;
+CHistorySync         history;
 LlmCloudApiBridge    llm;
 
 int OnInit(void)
   {
    if(!pip.Init(_Symbol)) return INIT_FAILED;
+   if(!history.EnsureBars(_Symbol, _Period, 300)) return INIT_FAILED;
    risk.Init(InpDailyLossPct, InpMaxPositions, 0.10);
    if(!llm.Init(_Symbol, _Period, InpLlmTimeoutMs)) return INIT_FAILED;
    if(!registry.Check(InpMagic))

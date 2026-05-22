@@ -24,7 +24,7 @@ This is the 4th MCP server in the kit, joining `metaeditor-bridge`,
 | Tool | Wraps | One-line purpose |
 |------|-------|------------------|
 | `verify.lint`               | `vibecodekit_mql5.lint.lint_file`                    | 8 critical-tier AP detectors (AP-1/3/5/15/17/18/20/21). |
-| `verify.lint_best_practice` | `vibecodekit_mql5.lint_best_practice.BEST_PRACTICE_DETECTORS` | 15 WARN-tier AP detectors (AP-2/4/6/7/8/9/10/11/12/13/14/16/19/22/23). |
+| `verify.lint_best_practice` | `vibecodekit_mql5.lint_best_practice.BEST_PRACTICE_DETECTORS` | 16 WARN-tier AP detectors (AP-2/4/6/7/8/9/10/11/12/13/14/16/19/22/23/24). |
 | `verify.method_hiding`      | `vibecodekit_mql5.method_hiding_check.check_method_hiding` | CExpert-subclass-without-`using` (ERROR ≥ build 5260). |
 | `verify.trader17`           | `vibecodekit_mql5.trader_check.evaluate` + `verdict` | 17-point reliability checklist; verdict by mode. |
 | `verify.compile`            | `vibecodekit_mql5.compile.compile_mq5`               | MetaEditor compile (Wine on Linux) — convenience over `metaeditor.compile`. |

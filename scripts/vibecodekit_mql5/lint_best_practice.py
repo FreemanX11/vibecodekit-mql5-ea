@@ -131,6 +131,23 @@ def detect_ap23(path: str, raw: str, src: str) -> list[Finding]:
     return out
 
 
+# ─── AP-24 History-not-synchronized ──────────────────────────────────────────
+_HISTORY_READ = re.compile(
+    r"\b(?:CopyBuffer|CopyRates|CopyTime|iOpen|iHigh|iLow|iClose|iTime|iMA|iRSI|iATR|iCustom)\s*\("
+)
+
+
+def detect_ap24(path: str, raw: str, src: str) -> list[Finding]:
+    m = _HISTORY_READ.search(src)
+    if not m:
+        return []
+    if re.search(r"\b(?:CHistorySync|SeriesInfoInteger|SERIES_SYNCHRONIZED)\b", src):
+        return []
+    line, col = _line_col(src, m.start())
+    return [Finding(path, line, col, "WARN", "AP-24",
+                    "History/indicator access without synchronization guard")]
+
+
 # ─── AP-11 Mode-blind (netting/hedging) ──────────────────────────────────────
 def detect_ap11(path: str, raw: str, src: str) -> list[Finding]:
     if re.search(r"\bPositionSelect\b|\bOrderSend\b", src) and not re.search(
@@ -268,4 +285,5 @@ BEST_PRACTICE_DETECTORS: list[tuple[str, Detector]] = [
     ("AP-19", detect_ap19),
     ("AP-22", detect_ap22),
     ("AP-23", detect_ap23),
+    ("AP-24", detect_ap24),
 ]
