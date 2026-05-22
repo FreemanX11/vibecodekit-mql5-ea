@@ -40,6 +40,13 @@ from .ea_docs_render import (
     section_labels,
     table_headers,
 )
+from .ea_docs_semantics import (
+    EnrichedParamRow,
+    enrich_param_rows,
+    load_flow_narrative,
+    load_input_semantics,
+    substitute_placeholders,
+)
 from .spec_schema import EaSpec, validate
 
 
@@ -214,7 +221,16 @@ def build_doc_content(
         TimelineStep(labels[3], captions[3], icon="rocket", highlight=True),
     ]
 
-    params = [_input_to_param_row(d) for d in parse_inputs(mq5_text)]
+    decls = parse_inputs(mq5_text)
+    params = [_input_to_param_row(d) for d in decls]
+    # Phase-1: enrich the input rows with the semantics library and
+    # load the per-archetype FLOW narrative. Both are no-ops (empty)
+    # when the archetype hasn't been authored yet — the renderer
+    # silently omits the new sections, preserving legacy output.
+    semantics = load_input_semantics()
+    enriched_params: list[EnrichedParamRow] = enrich_param_rows(decls, semantics)
+    flow_md = load_flow_narrative(spec.preset, spec.stack, lang=lang) or ""
+    flow_narrative = substitute_placeholders(flow_md, spec) if flow_md else ""
     notes = derive_take_notes(spec, lang=lang)
 
     subtitle = _TITLE_SUBTITLE[lang]
@@ -233,6 +249,8 @@ def build_doc_content(
         overview_layers=overview,
         strategy_timeline=timeline,
         params=params,
+        enriched_params=enriched_params,
+        flow_narrative=flow_narrative,
         notes=notes,
         closing_html=closing_html_fragment,
         lang=lang,
@@ -333,6 +351,61 @@ def render_markdown(content: DocContent) -> str:
                 f"| {p.group or '-'} | `{p.name}` | `{p.type}` | "
                 f"`{p.default}` | {note} |"
             )
+        lines.append("")
+
+    if content.enriched_params:
+        lines.append(f"## {labels['param_deep_dive']}")
+        lines.append("")
+        no_doc = (
+            "Chưa có mô tả trong input-semantics.yaml."
+            if content.lang == "vi"
+            else "Not yet documented in input-semantics.yaml."
+        )
+        dd_labels = (
+            ("Ý nghĩa", "Đơn vị", "Công thức", "Phụ thuộc",
+             "Sử dụng bởi", "Dải hợp lý", "Lưu ý")
+            if content.lang == "vi"
+            else ("Meaning", "Unit", "Formula", "Depends on",
+                  "Used by", "Sensible range", "Gotchas")
+        )
+        dd_default_label = "mặc định" if content.lang == "vi" else "default"
+        dd_group_label = "nhóm" if content.lang == "vi" else "group"
+        for row in content.enriched_params:
+            header_bits = [
+                f"`{row.name}` (`{row.type}`, {dd_default_label} `{row.default}`)"
+            ]
+            if getattr(row, "group", ""):
+                header_bits.append(f"_{dd_group_label}: {row.group}_")
+            lines.append(f"### {' — '.join(header_bits)}")
+            lines.append("")
+            sem = getattr(row, "semantic", None)
+            if sem is None:
+                tooltip = (row.tooltip or "").strip()
+                if tooltip:
+                    lines.append(tooltip)
+                    lines.append("")
+                lines.append(f"_{no_doc}_")
+                lines.append("")
+                continue
+
+            def _row(label: str, value: str) -> None:
+                if value:
+                    lines.append(f"- **{label}:** {value}")
+
+            _row(dd_labels[0], sem.meaning)
+            _row(dd_labels[1], sem.unit)
+            _row(dd_labels[2], sem.formula)
+            if sem.depends_on:
+                _row(dd_labels[3], ", ".join(f"`{d}`" for d in sem.depends_on))
+            _row(dd_labels[4], sem.used_by)
+            _row(dd_labels[5], sem.sensible_range)
+            _row(dd_labels[6], sem.gotchas)
+            lines.append("")
+
+    if content.flow_narrative:
+        lines.append(f"## {labels['flow']}")
+        lines.append("")
+        lines.append(content.flow_narrative.rstrip())
         lines.append("")
 
     if content.notes:

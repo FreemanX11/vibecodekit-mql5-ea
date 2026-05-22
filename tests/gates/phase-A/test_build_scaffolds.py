@@ -40,6 +40,11 @@ def _assert_rendered(out: Path) -> None:
     assert (out / "CRiskGuard.mqh").is_file()
     assert (out / "CMagicRegistry.mqh").is_file()
     assert (out / "Sets" / "default.set").is_file()
+    # FLOW-{vi,en}.md are authoring artifacts for the docs renderer.
+    # They must NOT be copied into the rendered output (would pollute
+    # the user's MT5 Experts folder + leak template into ship.zip).
+    assert not (out / "FLOW-vi.md").exists()
+    assert not (out / "FLOW-en.md").exists()
 
 
 def test_scaffold_stdlib(tmp_path: Path):
