@@ -9,6 +9,7 @@
 #define __LlmEmbeddedOnnxLlmBridge_MQH__
 
 #include "COnnxLoader.mqh"
+#include "CMemorySafety.mqh"
 
 class LlmEmbeddedOnnxLlmBridge
   {
@@ -52,7 +53,7 @@ public:
 
    string            SuggestOrFallback(const string symbol)
      {
-      if(m_onnx == NULL || m_onnx.Handle() == INVALID_HANDLE)
+      if(m_onnx == NULL || !POINTER_IS_VALID(m_onnx) || m_onnx.Handle() == INVALID_HANDLE)
          return _fallback(symbol);
       // NB: 'input' and 'output' are reserved MQL5 keywords (used for
       // declaring optimizer-visible input parameters). Use 'feat' /

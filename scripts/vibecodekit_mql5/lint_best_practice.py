@@ -148,6 +148,25 @@ def detect_ap24(path: str, raw: str, src: str) -> list[Finding]:
                     "History/indicator access without synchronization guard")]
 
 
+# ─── AP-25 Raw-delete-no-guard ────────────────────────────────────────────────
+_RAW_DELETE = re.compile(r"(?<!SAFE_)\bdelete\s+\w+\s*;")
+
+
+def detect_ap25(path: str, raw: str, src: str) -> list[Finding]:
+    out: list[Finding] = []
+    if "SAFE_DELETE" in src:
+        return out
+    for m in _RAW_DELETE.finditer(src):
+        head = src[max(0, m.start() - 160):m.start()]
+        if "CheckPointer" in head or "POINTER_DYNAMIC" in head:
+            continue
+        line, col = _line_col(src, m.start())
+        out.append(Finding(path, line, col, "WARN", "AP-25",
+                           "Raw delete without CheckPointer/SAFE_DELETE guard"))
+        break
+    return out
+
+
 # ─── AP-11 Mode-blind (netting/hedging) ──────────────────────────────────────
 def detect_ap11(path: str, raw: str, src: str) -> list[Finding]:
     if re.search(r"\bPositionSelect\b|\bOrderSend\b", src) and not re.search(
@@ -286,4 +305,5 @@ BEST_PRACTICE_DETECTORS: list[tuple[str, Detector]] = [
     ("AP-22", detect_ap22),
     ("AP-23", detect_ap23),
     ("AP-24", detect_ap24),
+    ("AP-25", detect_ap25),
 ]

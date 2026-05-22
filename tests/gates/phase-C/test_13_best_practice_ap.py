@@ -17,9 +17,9 @@ def test_best_practice_detectors_are_all_wired():
     codes = {c for c, _ in lint_best_practice.BEST_PRACTICE_DETECTORS}
     expected = {"AP-2", "AP-4", "AP-6", "AP-7", "AP-8", "AP-9", "AP-10",
                 "AP-11", "AP-12", "AP-13", "AP-14", "AP-16", "AP-19",
-                "AP-22", "AP-23", "AP-24"}
+                "AP-22", "AP-23", "AP-24", "AP-25"}
     assert codes == expected
-    assert len(codes) == 16
+    assert len(codes) == 17
 
 
 def test_ap2_flags_tight_stoploss():
@@ -176,6 +176,29 @@ def test_ap24_clean_with_history_sync_guard():
         "void OnTick(){ double fast[1]; CopyBuffer(h_fast, 0, 0, 1, fast); }\n"
     )
     assert _findings_for(src, "AP-24") == []
+
+
+def test_ap25_flags_raw_delete_without_guard():
+    src = (
+        "// digits-tested: 5,3\n"
+        "class CThing {};\n"
+        "CThing *ptr;\n"
+        "void OnDeinit(const int reason){ delete ptr; ptr = NULL; }\n"
+    )
+    findings = _findings_for(src, "AP-25")
+    assert len(findings) == 1
+    assert findings[0].severity == "WARN"
+
+
+def test_ap25_clean_with_safe_delete():
+    src = (
+        "// digits-tested: 5,3\n"
+        '#include "CMemorySafety.mqh"\n'
+        "class CThing {};\n"
+        "CThing *ptr;\n"
+        "void OnDeinit(const int reason){ SAFE_DELETE(ptr); }\n"
+    )
+    assert _findings_for(src, "AP-25") == []
 
 
 def test_ap22_skips_service_programs():

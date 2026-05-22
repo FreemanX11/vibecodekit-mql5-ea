@@ -429,7 +429,7 @@ clients.
 `spec.from_prompt`, `spec.validate`, `build.auto`, `verify.permission`.
 
 **PR-2 (static-analysis verify suite):** `verify.lint` (8 critical AP),
-`verify.lint_best_practice` (16 WARN AP), `verify.method_hiding`,
+`verify.lint_best_practice` (17 WARN AP), `verify.method_hiding`,
 `verify.trader17`, `verify.compile`, `verify.broker_safety`,
 `verify.audit`.
 
@@ -528,6 +528,7 @@ Lint is split across two tiers:
 | AP-22 | `OnTick` reaches no order-placing call (placeholder signal) | `lint_best_practice.py` |
 | AP-23 | `CTrade.Buy/Sell` return/retcode not checked | `lint_best_practice.py` |
 | AP-24 | History/indicator access without sync guard | `lint_best_practice.py` |
+| AP-25 | Raw `delete` without pointer guard | `lint_best_practice.py` |
 
 ### 6.3. Method-hiding (1, build-aware)
 

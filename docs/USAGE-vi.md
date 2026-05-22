@@ -495,7 +495,7 @@ giữa các PR — PR sau chỉ mở rộng `DISPATCH`.
 `spec.from_prompt`, `spec.validate`, `build.auto`, `verify.permission`.
 
 **PR-2 (static-analysis verify suite):** `verify.lint` (8 AP critical),
-`verify.lint_best_practice` (16 AP WARN), `verify.method_hiding`,
+`verify.lint_best_practice` (17 AP WARN), `verify.method_hiding`,
 `verify.trader17`, `verify.compile`, `verify.broker_safety`,
 `verify.audit`.
 
@@ -596,6 +596,7 @@ Lint chia 2 cấp:
 | AP-22 | `OnTick` không đặt lệnh (signal placeholder) | `lint_best_practice.py` |
 | AP-23 | `CTrade.Buy/Sell` không check return/retcode | `lint_best_practice.py` |
 | AP-24 | Đọc history/chỉ báo khi chưa có sync guard | `lint_best_practice.py` |
+| AP-25 | `delete` thô không có pointer guard | `lint_best_practice.py` |
 
 ### 6.3. Method-hiding (1, build-aware)
 
