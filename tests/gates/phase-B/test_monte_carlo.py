@@ -1,6 +1,7 @@
 """Phase B — monte_carlo bootstrap + percentile unit tests (4 tests)."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
@@ -48,7 +49,7 @@ def test_help_prints_under_ascii_python_io_encoding():
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
-        env={"PYTHONIOENCODING": "cp1252"},
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
     )
     assert result.returncode == 0
     assert "mql5-monte-carlo" in result.stdout
