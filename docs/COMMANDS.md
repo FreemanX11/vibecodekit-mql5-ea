@@ -66,8 +66,9 @@ No master `/mql5` router — every command stands alone.
 - `/mql5-cloud-optimize` — emit a tester.ini for Cloud Network
 - `/mql5-canary`         — 30-min post-deploy live monitor
 
-## Ship (3)
+## Ship (4)
 - `/mql5-forge-pr` — push a PR to Algo Forge
+- `/mql5-package`  — produce `manifest.json` (SHA-256 inventory) + `<name>-ship.zip` from an `mql5-auto-build` output dir; same step runs inline when `mql5-auto-build --package` is set
 - `/mql5-ship`     — `git tag` + push
 - `/mql5-refine`   — classify a diff as tweak/patch/rework
 

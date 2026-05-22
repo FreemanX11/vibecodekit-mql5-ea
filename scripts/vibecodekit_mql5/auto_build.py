@@ -240,6 +240,14 @@ def run_pipeline(
             report, out_dir, skip=skip_dashboard,
             publish_cmd=publish_cmd,
         )
+        # Write the pipeline report to disk BEFORE packaging so the
+        # ship-zip captures the build/lint/compile/gate/docs/dashboard
+        # verdict. The on-disk file is rewritten after packaging to also
+        # surface the manifest summary in `report.package`; the copy
+        # inside the zip stays at the pre-package snapshot, which is the
+        # build-side verdict and what a reviewer reading the artifact
+        # actually needs.
+        _write_report(report, out_dir)
         _maybe_attach_package(
             report,
             out_dir,
@@ -247,6 +255,8 @@ def run_pipeline(
             spec_path=package_spec,
             zip_path=package_zip,
         )
+        if package_artifacts:
+            _write_report(report, out_dir)
         return report
 
     build_stage = _stage_build(spec, out_dir, force, ea_spec=ea_spec)
@@ -475,7 +485,12 @@ def main(argv: list[str] | None = None) -> int:
         package_spec=args.spec,
         package_zip=args.package_zip,
     )
-    report_path = _write_report(report, out_dir)
+    # run_pipeline._finalize() already wrote auto-build-report.json (once
+    # pre-package so the zip captures the build verdict, and again after
+    # packaging when --package is set so the on-disk file also carries the
+    # manifest summary). Nothing left to write here — just emit the JSON
+    # body + a stderr breadcrumb for callers.
+    report_path = out_dir / "auto-build-report.json"
     print(json.dumps(report.to_dict(), indent=2))
     print(f"\nreport: {report_path}", file=sys.stderr)
     return 0 if report.ok else 1
