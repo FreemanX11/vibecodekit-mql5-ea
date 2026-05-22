@@ -31,6 +31,15 @@ REQUIRED_MODULES = [
     "vibecodekit_mql5.pip_normalize",
 ]
 
+# Checks that depend on a working Wine + MetaEditor + terminal stack.
+# In soft mode (``--soft``) these are surfaced as warnings instead of
+# failures so docs-only / lint-only CI environments without Wine can still
+# exit 0. Python toolchain, kit-package imports, references, and scaffolds
+# remain hard checks under both modes.
+_OPTIONAL_CHECKS: frozenset[str] = frozenset({
+    "wine", "metaeditor-bin", "terminal-bin",
+})
+
 # Standard MetaTrader 5 binary locations Devin's setup-wine-metaeditor.sh leaves
 # behind. Doctor uses these as a fallback when the corresponding env var is not
 # set, so a fresh shell that hasn't sourced ~/.mql5-env still gets a green check.
@@ -84,6 +93,23 @@ class DoctorReport:
         if not ok:
             self.ok = False
 
+    def is_ok(self, *, soft: bool = False) -> bool:
+        """Aggregate health across checks.
+
+        In soft mode the Wine / MetaEditor / terminal checks no longer
+        flip the report. Every other check still does. This lets
+        docs-only or lint-only CI jobs that don't ship Wine pass the
+        doctor gate without ignoring failures elsewhere.
+        """
+        if not soft:
+            return self.ok
+        for c in self.checks:
+            if c["ok"]:
+                continue
+            if c["name"] not in _OPTIONAL_CHECKS:
+                return False
+        return True
+
 
 def run_doctor(repo_root: Path = REPO_ROOT) -> DoctorReport:
     rep = DoctorReport()
@@ -134,10 +160,24 @@ def run_doctor(repo_root: Path = REPO_ROOT) -> DoctorReport:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mql5-doctor")
     parser.add_argument("--repo-root", default=str(REPO_ROOT))
+    parser.add_argument(
+        "--soft",
+        action="store_true",
+        help=(
+            "Treat Wine / MetaEditor / terminal probes as warnings instead "
+            "of failures. Exit 0 when only those optional checks fail. "
+            "Useful for docs-only or lint-only CI environments."
+        ),
+    )
     args = parser.parse_args(argv)
     rep = run_doctor(Path(args.repo_root))
-    print(json.dumps({"ok": rep.ok, "checks": rep.checks}, indent=2))
-    return 0 if rep.ok else 1
+    ok = rep.is_ok(soft=args.soft)
+    payload: dict[str, object] = {"ok": ok, "checks": rep.checks}
+    if args.soft:
+        payload["soft"] = True
+        payload["strict_ok"] = rep.ok
+    print(json.dumps(payload, indent=2))
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

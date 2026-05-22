@@ -554,6 +554,17 @@ python -m vibecodekit_mql5.method_hiding_check MyEA.mq5 --build 5260
 export METAEDITOR_BIN=~/.wine/drive_c/Program\ Files/MetaTrader\ 5/metaeditor64.exe
 ```
 
+### `doctor --soft` for docs-only / lint-only CI
+Wine / MetaEditor / terminal probes degrade to warnings instead of failures, so
+CI jobs that don't ship Wine still exit 0. Hard checks (Python ≥ 3.10, kit
+package imports, `docs/references/`, scaffold archetypes) still flip the gate.
+```bash
+python -m vibecodekit_mql5.doctor --soft
+# JSON output adds "soft": true and "strict_ok": <unfiltered ok>
+# rc == 0 when only optional wine/MT5 probes fail; rc == 1 if any hard
+# check fails.
+```
+
 ### ONNX e2e test fails — torch not installed
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cpu

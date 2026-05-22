@@ -623,6 +623,17 @@ python -m vibecodekit_mql5.method_hiding_check MyEA.mq5 --build 5260
   export METAEDITOR_BIN=~/.wine/drive_c/Program\ Files/MetaTrader\ 5/metaeditor64.exe
   ```
 
+### `doctor --soft` cho CI chỉ chạy docs / lint (không có Wine)
+Các probe Wine / MetaEditor / terminal chuyển thành cảnh báo thay vì lỗi, để
+CI không có Wine vẫn exit 0. Các check bắt buộc (Python ≥ 3.10, import kit
+package, `docs/references/`, scaffold archetypes) vẫn flip gate như cũ.
+```bash
+python -m vibecodekit_mql5.doctor --soft
+# JSON output có thêm "soft": true và "strict_ok": <ok không lọc>
+# rc == 0 khi chỉ có probe optional wine/MT5 fail; rc == 1 nếu bất kỳ
+# check bắt buộc nào fail.
+```
+
 ### Test ONNX e2e fail vì PyTorch không cài
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cpu

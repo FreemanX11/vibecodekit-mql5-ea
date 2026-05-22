@@ -12,14 +12,18 @@ requires-python = ">=3.10"
 authors = [{name = "vibecodekit-mql5-ea contributors"}]
 
 dependencies = [
-    # Phase 0: keep minimal; phases A-E add as needed
+    # Phase 0: keep minimal; phases A-E add as needed.
+    # PyYAML lives in core because `mql5-auto-build` accepts a YAML spec by
+    # default and the documented quickstart pipes `mql5-spec-from-prompt`
+    # YAML output straight into it; without PyYAML the first chat-driven
+    # build after a fresh `pip install -e .` fails on `load_spec`.
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
-    "pyyaml>=6.0",
     "ruff>=0.1",
 ]
 phase-d = [

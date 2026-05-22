@@ -79,6 +79,56 @@ def test_doctor_linux_still_requires_wine(
     assert by_name["wine"]["detail"] == "PATH"
 
 
+def test_doctor_soft_mode_ignores_wine_failures(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """``--soft`` keeps wine/MetaEditor/terminal failures as report rows but
+    treats them as warnings: exit 0, top-level ``ok`` is True, ``strict_ok``
+    surfaces the unfiltered result for callers who still want it.
+    """
+    monkeypatch.delenv("METAEDITOR_PATH", raising=False)
+    monkeypatch.delenv("MQL5_TERMINAL_PATH", raising=False)
+    monkeypatch.setenv("WINEPREFIX", str(tmp_path / "empty"))
+    monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: None)
+
+    rc = doctor.main(["--repo-root", str(REPO_ROOT), "--soft"])
+    out = capsys.readouterr().out
+
+    import json as _json
+    payload = _json.loads(out)
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["soft"] is True
+    assert payload["strict_ok"] is False
+    by_name = {c["name"]: c for c in payload["checks"]}
+    for opt in ("wine", "metaeditor-bin", "terminal-bin"):
+        assert by_name[opt]["ok"] is False, f"{opt} should still report failure"
+
+
+def test_doctor_soft_mode_still_fails_on_essential_check(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Soft mode forgives optional wine/MT5 checks but not core ones.
+    A missing references directory must still flip ok=False and exit 1
+    even with --soft, otherwise the gate is meaningless.
+    """
+    fake_root = tmp_path / "fake-kit"
+    fake_root.mkdir()
+    (fake_root / "scaffolds").mkdir()
+
+    rc = doctor.main(["--repo-root", str(fake_root), "--soft"])
+    out = capsys.readouterr().out
+
+    import json as _json
+    payload = _json.loads(out)
+    assert rc == 1
+    assert payload["ok"] is False
+    by_name = {c["name"]: c for c in payload["checks"]}
+    assert by_name["references-dir"]["ok"] is False
+
+
 def test_doctor_metaeditor_and_terminal_fail_with_useful_detail(
     tmp_path: Path, monkeypatch
 ) -> None:
