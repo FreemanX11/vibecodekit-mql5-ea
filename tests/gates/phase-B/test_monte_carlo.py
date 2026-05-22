@@ -1,6 +1,10 @@
 """Phase B — monte_carlo bootstrap + percentile unit tests (4 tests)."""
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+
 from vibecodekit_mql5.monte_carlo import (
     bootstrap,
     evaluate,
@@ -36,3 +40,16 @@ def test_evaluate_pass_within_tolerance():
     result = evaluate(returns, reported_dd=5.0, n_sims=200, seed=7)
     assert result.n_sims == 200
     assert result.verdict in ("PASS", "FAIL")  # deterministic with seed
+
+
+def test_help_prints_under_ascii_python_io_encoding():
+    result = subprocess.run(
+        [sys.executable, "-m", "vibecodekit_mql5.monte_carlo", "--help"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+    )
+    assert result.returncode == 0
+    assert "mql5-monte-carlo" in result.stdout

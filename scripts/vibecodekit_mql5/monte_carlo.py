@@ -26,7 +26,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-
 @dataclass
 class MonteCarloResult:
     n_sims: int
@@ -127,6 +126,10 @@ def _read_returns_csv(path: Path) -> list[float]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .console import ensure_utf8_stdio
+
+    ensure_utf8_stdio()
+
     p = argparse.ArgumentParser(prog="mql5-monte-carlo", description=__doc__.splitlines()[0])
     p.add_argument("returns_csv", help="One return per row (CSV header optional)")
     p.add_argument("--reported-dd", type=float, required=True,
