@@ -213,7 +213,7 @@ overrides) nằm ở `scripts/vibecodekit_mql5/spec_schema.py`. Bảng
 recogniser của `mql5-spec-from-prompt` có ở
 [`devin-chat-driven-build.md`](devin-chat-driven-build.md#what-the-parser-understands).
 
-### 3.4. Verify (11 lệnh)
+### 3.4. Verify (12 lệnh)
 
 ```bash
 # 1. Compile qua MetaEditor (Wine trên Linux)
@@ -236,6 +236,18 @@ python -m vibecodekit_mql5.backtest MyEA.ex5 inputs.set \
 python -m vibecodekit_mql5.tester_run MyEA.ex5 \
     --symbol EURUSD --period H1 --from 2024-01-01 --to 2024-06-01 \
     --out tester.xml > metrics.json
+
+# 4c. Chạy optimization end-to-end (drive terminal64.exe + parse opt XML
+#     → top-N parameter set). File .set phải có flag optimize=true kèm
+#     start/step/stop; mql5-optimize-run không tự sinh range.
+python -m vibecodekit_mql5.optimize_run MyEA.ex5 default.set \
+    --symbol EURUSD --period 2024.01.01-2024.12.31 --tf H1 \
+    --mode genetic --criterion sharpe-max --top 10 > top-sets.json
+
+# CI / hermetic: parse opt XML có sẵn, không launch MT5
+python -m vibecodekit_mql5.optimize_run MyEA.ex5 default.set \
+    --period 2024.01.01-2024.12.31 \
+    --from-xml /path/to/opt-results.xml --criterion sharpe-max
 
 # 5. Walk-forward IS/OOS (cần 2 XML report đã chạy IS và OOS riêng)
 python -m vibecodekit_mql5.walkforward is.xml oos.xml > walkforward.json
