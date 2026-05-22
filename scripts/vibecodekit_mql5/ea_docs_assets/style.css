@@ -344,6 +344,115 @@ main {
 .section-header .pixel-icon { filter: invert(1); }
 .section-header .h-section { color: var(--c-cream); margin: 0; }
 
+/* --- param-deep-dive: per-input operator manual ----------------------- */
+
+.param-deep-dive {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin: 18px 0;
+}
+
+.param-card {
+    background: var(--c-cream);
+    border: var(--border-thick);
+    box-shadow: 4px 4px 0 var(--c-black);
+    padding: 14px 18px;
+}
+
+.param-card .dd-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    border-bottom: 2px solid var(--c-black);
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+}
+
+.param-card .dd-name {
+    font-size: 18px;
+    font-weight: 700;
+    background: var(--c-yellow);
+    padding: 2px 8px;
+    border: 2px solid var(--c-black);
+}
+
+.param-card .dd-type {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--c-black);
+    color: var(--c-cream);
+    padding: 2px 6px;
+}
+
+.param-card .dd-default {
+    font-family: var(--font-mono);
+    font-size: 13px;
+}
+
+.param-card .dd-group {
+    margin-left: auto;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: var(--c-cyan);
+    padding: 2px 8px;
+    border: 2px solid var(--c-black);
+}
+
+.param-card .dd-fields {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 16px;
+    row-gap: 6px;
+    margin: 0;
+}
+
+.param-card .dd-fields dt {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 1px;
+}
+
+.param-card .dd-fields dd {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.param-card .dd-tooltip {
+    font-style: italic;
+    margin: 0 0 8px 0;
+}
+
+.param-card .dd-missing {
+    color: #777;
+    font-style: italic;
+    margin: 0;
+}
+
+/* --- flow-narrative: how the EA runs ---------------------------------- */
+
+.flow-narrative {
+    background: var(--c-cream);
+    border: var(--border-thick);
+    box-shadow: 6px 6px 0 var(--c-black);
+    padding: 18px 22px;
+    margin: 18px 0 28px 0;
+    overflow-x: auto;
+}
+
+.flow-narrative .flow-body {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 /* --- print rules: ensure PDF output is identical ----------------------- */
 
 @media print {
@@ -352,7 +461,8 @@ main {
         print-color-adjust: exact;
     }
     .section-header, .manifesto, .block, .layer-stack .layer,
-    .timeline .step, .take-note, .param-table {
+    .timeline .step, .take-note, .param-table,
+    .param-card, .flow-narrative {
         page-break-inside: avoid;
     }
 }

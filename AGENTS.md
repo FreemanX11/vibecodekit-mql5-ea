@@ -10,7 +10,7 @@ to read first, what to use, and what NOT to introduce.
   Expert Advisors on MetaTrader 5. Router-free, fail-fast, deterministic.
 - **Status:** shipped product, `v1.0.1`. ~50 CLI commands, 4 MCP servers,
   23 scaffold archetypes, 23 anti-pattern detectors, 7-layer permission
-  gate, 853 tests across Phase 0 / A / B / C / D / E.
+  gate, 872 tests across Phase 0 / A / B / C / D / E.
 - **License:** MIT.
 
 ## Source Of Truth (read in this order)
@@ -107,7 +107,7 @@ mql5-permission --mode personal --source FirstEA.mq5
 ## Tiếng Việt — tóm tắt cho agent
 
 - `vibecodekit-mql5-ea` là kit xây EA MQL5 production-grade, `v1.0.1`,
-  ~50 lệnh CLI, 4 MCP server, 23 scaffold, 853 test gate.
+  ~50 lệnh CLI, 4 MCP server, 23 scaffold, 872 test gate.
 - Bắt đầu từ `README.md` → `docs/QUICKSTART.md` → `docs/COMMANDS.md`.
   Tham khảo song ngữ ở `docs/USAGE-vi.md` + `docs/USER-GUIDE-vi.md`.
 - Mọi lệnh đứng độc lập (`python -m vibecodekit_mql5.<name>`). **Không**

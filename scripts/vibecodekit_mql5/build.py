@@ -167,6 +167,13 @@ def build(req: BuildRequest) -> Path:
     for src in src_dir.rglob("*"):
         if src.is_dir():
             continue
+        # FLOW-{vi,en}.md are authoring artifacts consumed by the docs
+        # renderer (``ea_docs_semantics.load_flow_narrative``). They are
+        # injected — already placeholder-substituted — into the
+        # generated ``.docs.html`` / ``.docs.md``, so the raw template
+        # should never reach the end-user's build folder.
+        if src.name in ("FLOW-vi.md", "FLOW-en.md"):
+            continue
         rel = src.relative_to(src_dir)
         dst = req.out_dir / Path(*[_render_name(p, req) for p in rel.parts])
         dst.parent.mkdir(parents=True, exist_ok=True)

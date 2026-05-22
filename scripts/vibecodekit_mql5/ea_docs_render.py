@@ -40,6 +40,8 @@ __all__ = [
     "render_layer_stack",
     "render_timeline",
     "render_param_table",
+    "render_param_deep_dive",
+    "render_flow_narrative",
     "render_take_note",
     "render_html_document",
 ]
@@ -65,12 +67,16 @@ _SECTION_LABELS: dict[str, dict[str, str]] = {
         "overview": "Kiến trúc hệ thống",
         "strategy": "Chu trình chiến lược",
         "params": "Tham số EA",
+        "param_deep_dive": "Chi tiết từng tham số",
+        "flow": "Cách EA chạy",
         "notes": "Lưu ý quan trọng",
     },
     "en": {
         "overview": "System Architecture",
         "strategy": "Strategy Evolution",
         "params": "EA Inputs",
+        "param_deep_dive": "Per-Input Deep Dive",
+        "flow": "How the EA Runs",
         "notes": "Take Notes",
     },
 }
@@ -154,6 +160,11 @@ class DocContent:
     overview_layers: Sequence[LayerSpec] = ()
     strategy_timeline: Sequence[TimelineStep] = ()
     params: Sequence[ParamRow] = ()
+    # Phase-1 enrichments. Both default to empty so existing callers and
+    # archetypes without a FLOW-vi.md / matching semantics keep rendering
+    # exactly as before.
+    enriched_params: Sequence[object] = ()  # EnrichedParamRow from ea_docs_semantics
+    flow_narrative: str = ""  # plain markdown narrative, already placeholder-substituted
     notes: Sequence[TakeNote] = ()
     closing_html: str = ""  # optional free-form HTML at the end
     lang: str = "vi"  # locale for section headers + table headers
@@ -317,6 +328,127 @@ def render_param_table(
     return f'<table class="param-table">{head}{body}</table>'
 
 
+_DEEP_DIVE_LABELS: dict[str, dict[str, str]] = {
+    "vi": {
+        "meaning": "Ý nghĩa",
+        "unit": "Đơn vị",
+        "formula": "Công thức",
+        "depends_on": "Phụ thuộc",
+        "used_by": "Sử dụng bởi",
+        "range": "Dải hợp lý",
+        "gotchas": "Lưu ý",
+        "no_doc": "Chưa có mô tả trong input-semantics.yaml.",
+    },
+    "en": {
+        "meaning": "Meaning",
+        "unit": "Unit",
+        "formula": "Formula",
+        "depends_on": "Depends on",
+        "used_by": "Used by",
+        "range": "Sensible range",
+        "gotchas": "Gotchas",
+        "no_doc": "Not yet documented in input-semantics.yaml.",
+    },
+}
+
+
+def render_param_deep_dive(rows: Sequence[object], lang: str = "vi") -> str:
+    """Render the per-input deep-dive section.
+
+    Each input gets a card with meaning / unit / formula / dependencies /
+    sensible range / gotchas. Inputs not present in the semantics
+    library still get a card so the user sees them — just with the
+    ``no_doc`` placeholder.
+
+    The ``rows`` argument is a sequence of ``EnrichedParamRow`` (from
+    ``ea_docs_semantics``); typed as ``object`` here to avoid a hard
+    import cycle.
+    """
+    if not rows:
+        return ""
+    labels = _DEEP_DIVE_LABELS.get(lang) or _DEEP_DIVE_LABELS["vi"]
+    cards: list[str] = []
+    for row in rows:
+        name = escape(getattr(row, "name", ""))
+        type_ = escape(getattr(row, "type", ""))
+        default = escape(getattr(row, "default", ""))
+        group = escape(getattr(row, "group", "") or "")
+        sem = getattr(row, "semantic", None)
+        header = (
+            f'<div class="dd-header">'
+            f'<code class="dd-name">{name}</code>'
+            f'<code class="dd-type">{type_}</code>'
+            f'<span class="dd-default">= {default}</span>'
+        )
+        if group:
+            header += f'<span class="dd-group">{group}</span>'
+        header += "</div>"
+
+        body_parts: list[str] = []
+        if sem is None:
+            tooltip = escape(getattr(row, "tooltip", "") or "")
+            if tooltip:
+                body_parts.append(f'<p class="dd-tooltip">{tooltip}</p>')
+            body_parts.append(
+                f'<p class="dd-missing">{escape(labels["no_doc"])}</p>'
+            )
+        else:
+            def _field(label_key: str, value: str) -> str:
+                if not value:
+                    return ""
+                return (
+                    f'<dt>{escape(labels[label_key])}</dt>'
+                    f'<dd>{_escape_multiline(value)}</dd>'
+                )
+
+            dl_parts = [
+                _field("meaning", sem.meaning),
+                _field("unit", sem.unit),
+                _field("formula", sem.formula),
+                (
+                    _field("depends_on", ", ".join(sem.depends_on))
+                    if sem.depends_on else ""
+                ),
+                _field("used_by", sem.used_by),
+                _field("range", sem.sensible_range),
+                _field("gotchas", sem.gotchas),
+            ]
+            dl = "".join(part for part in dl_parts if part)
+            if dl:
+                body_parts.append(f'<dl class="dd-fields">{dl}</dl>')
+
+        cards.append(
+            f'<article class="param-card">{header}'
+            f'{"".join(body_parts)}'
+            '</article>'
+        )
+    return f'<div class="param-deep-dive">{"".join(cards)}</div>'
+
+
+def _escape_multiline(text: str) -> str:
+    """Escape + preserve newlines as <br>, suitable for short narrative blobs."""
+    return escape(text).replace("\n", "<br>")
+
+
+def render_flow_narrative(narrative_md: str) -> str:
+    """Render the FLOW narrative inside a styled scroll block.
+
+    The narrative is plain markdown (authored by humans, placeholder-
+    substituted upstream). We do NOT run a full markdown parser — that
+    would add a dep and the FLOW files deliberately use only simple
+    constructs. Instead we wrap the content in a ``<pre>`` so newlines,
+    tables and ASCII diagrams render verbatim, which is the look the
+    Neo-Retro deck already uses for code-shaped artifacts.
+    """
+    if not narrative_md:
+        return ""
+    return (
+        '<section class="flow-narrative">'
+        f'<pre class="flow-body">{escape(narrative_md)}</pre>'
+        '</section>'
+    )
+
+
 def render_take_note(note: TakeNote) -> str:
     """Render one annotated callout (used in §5 Take notes)."""
     severity = note.severity if note.severity in ("info", "warn", "danger") else "info"
@@ -355,6 +487,14 @@ def render_html_document(content: DocContent) -> str:
     if content.params:
         sections.append(render_section_header(labels["params"], "code"))
         sections.append(render_param_table(content.params, lang=content.lang))
+    if content.enriched_params:
+        sections.append(render_section_header(labels["param_deep_dive"], "gear"))
+        sections.append(
+            render_param_deep_dive(content.enriched_params, lang=content.lang)
+        )
+    if content.flow_narrative:
+        sections.append(render_section_header(labels["flow"], "robot"))
+        sections.append(render_flow_narrative(content.flow_narrative))
     if content.notes:
         sections.append(render_section_header(labels["notes"], "spark"))
         for note in content.notes:
