@@ -126,7 +126,7 @@ python -m vibecodekit_mql5.blueprint
 python -m vibecodekit_mql5.tip
 ```
 
-### 3.3. Build (12)
+### 3.3. Build (13)
 
 ```bash
 # Scaffolds + patchers
@@ -138,7 +138,32 @@ python -m vibecodekit_mql5.onnx_export model.pt --output model.onnx --opset 14
 python -m vibecodekit_mql5.onnx_embed MyEA.mq5 --model model.onnx
 python -m vibecodekit_mql5.llm_context MyEA.mq5 --pattern cloud-api
 python -m vibecodekit_mql5.forge_init MyEA
+
+# End-user EA documentation renderer (called automatically by mql5-auto-build;
+# also runnable standalone)
+mql5-ea-docs ea-spec.yaml MyEA.mq5 --out build/MyEA --lang vi --formats html,md
 ```
+
+`mql5-ea-docs` produces `MyEA.docs.html` and `MyEA.docs.md` (and
+`.docs.pdf` when headless Chrome is available). The output covers:
+
+* **Kiến trúc hệ thống** — 3-layer block diagram (Signal / Risk / Execute).
+* **Chu trình chiến lược** — 4-step timeline.
+* **Tham số EA** — auto-parsed table from `input` declarations.
+* **Chi tiết từng tham số** — per-input deep-dive cards (meaning,
+  formula, sensible range, dependencies, gotchas) backed by
+  `docs/input-semantics.yaml`.
+* **Cách EA chạy** — archetype-specific OnInit / OnTick (or OnTimer /
+  OnStart) / OnDeinit narrative, sourced from
+  `scaffolds/<preset>/<stack>/FLOW-vi.md`. Currently Vietnamese-only;
+  English `FLOW-en.md` is on the roadmap.
+* **Setup khuyến nghị** — tuning table per account size / broker /
+  prop-firm context.
+* **Ghi chú quan trọng** — rule-driven warnings (PipNormalizer,
+  permission gate, AP-17 / AP-18 reminders).
+
+Flags: `--lang {vi,en}` (default `vi`), `--formats html,md[,pdf]`,
+`--ea-version`, `--compile-status PASS|FAIL`, `--gate-status PASS|FAIL`.
 
 Available archetypes for `build`: `stdlib`, `trend`, `mean-reversion`,
 `breakout`, `scalping`, `hedging-multi`, `news-trading`,
@@ -319,14 +344,31 @@ gate / docs / dashboard); the on-disk copy is rewritten after packaging
 so `report.package.ok` and `report.package.groups` are also queryable
 post-run.
 
-### 3.9. Other (4)
+### 3.9. Other (5)
 
 ```bash
 python -m vibecodekit_mql5.broker_safety MyEA.mq5
 python -m vibecodekit_mql5.trader_check  MyEA.mq5
 python -m vibecodekit_mql5.install       ~/existing-mt5-project
 python -m vibecodekit_mql5.second_opinion MyEA.mq5
+
+# 7-layer permission gate orchestrator (positional source, NOT --source).
+# Modes: personal (layers 1,2,3,4,7) | team (1-5,7) | enterprise (1-7).
+mql5-permission --mode personal MyEA.mq5
+mql5-permission --mode team     MyEA.mq5 --multibroker reports/
+mql5-permission --mode enterprise MyEA.mq5 \
+    --compile-log build.log --trader-check-report trader.json \
+    --matrix quality-matrix.html --journal rri-bt.json
 ```
+
+`mql5-permission` exits 1 if any layer fails. Layer 2 (compile)
+requires Wine + MetaEditor on Linux — use `mql5-doctor --soft` to
+verify; on a docs-only CI runner that lacks Wine, omit `--mode
+enterprise` so layer 2 doesn't block.
+
+The state dir (`--state-dir`, default `.rri-state`) caches per-layer
+payloads so subsequent CLI runs can re-use them without re-executing
+each tool.
 
 ---
 
@@ -531,7 +573,7 @@ for Claude Desktop, Cursor, Codex, and Devin.
 
 ---
 
-## 6. 23 anti-pattern detectors
+## 6. 26 anti-pattern detectors
 
 Lint is split across two tiers:
 
@@ -548,7 +590,7 @@ Lint is split across two tiers:
 | AP-20 | Hard-coded pip (`* 0.0001`, `* _Point`) | `lint.py` |
 | AP-21 | JPY/XAU digits broken | `lint.py` |
 
-### 6.2. Best-practice APs — WARN (14)
+### 6.2. Best-practice APs — WARN (17)
 
 | ID | Description | Detector |
 |----|-------------|----------|

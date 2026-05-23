@@ -140,7 +140,7 @@ python -m vibecodekit_mql5.blueprint          # mở step-4-blueprint
 python -m vibecodekit_mql5.tip                # mở step-5-tip (8 TIP)
 ```
 
-### 3.3. Build (12 lệnh)
+### 3.3. Build (13 lệnh)
 
 ```bash
 # 1. Render scaffold tổng quát — chọn archetype + variant
@@ -171,7 +171,32 @@ python -m vibecodekit_mql5.llm_context MyEA.mq5 --pattern cloud-api
 
 # 8. Khởi tạo repo trên Algo Forge
 python -m vibecodekit_mql5.forge_init MyEA
+
+# 9. Render docs end-user cho EA đã build (bình thường `mql5-auto-build`
+#    gọi tự động; chạy standalone khi muốn refresh docs)
+mql5-ea-docs ea-spec.yaml MyEA.mq5 --out build/MyEA --lang vi --formats html,md
 ```
+
+`mql5-ea-docs` xuất `MyEA.docs.html` + `MyEA.docs.md` (và `.docs.pdf`
+khi có headless Chrome). Nội dung gồm:
+
+* **Kiến trúc hệ thống** — sơ đồ 3 lớp Signal / Risk / Execute.
+* **Chu trình chiến lược** — timeline 4 bước.
+* **Tham số EA** — bảng input tự động parse từ `.mq5`.
+* **Chi tiết từng tham số** — card deep-dive per input (ý nghĩa,
+  công thức, dải hợp lý, phụ thuộc input khác, pitfall) lấy từ
+  `docs/input-semantics.yaml`.
+* **Cách EA chạy** — tường thuật OnInit / OnTick (hoặc OnTimer /
+  OnStart) / OnDeinit theo archetype, lấy từ
+  `scaffolds/<preset>/<stack>/FLOW-vi.md` (hiện mới có tiếng Việt;
+  `FLOW-en.md` nằm trong roadmap).
+* **Setup khuyến nghị** — bảng tune theo size tài khoản / broker /
+  context prop-firm.
+* **Ghi chú quan trọng** — cảnh báo rule-driven (PipNormalizer,
+  permission gate, AP-17 / AP-18).
+
+Flag: `--lang {vi,en}` (default `vi`), `--formats html,md[,pdf]`,
+`--ea-version`, `--compile-status PASS|FAIL`, `--gate-status PASS|FAIL`.
 
 #### 3.3a. Pipeline auto-build 1 lệnh
 
@@ -375,14 +400,23 @@ là snapshot build-side (build / lint / compile / gate / docs /
 dashboard); bản trên disk được ghi lại sau bước package nên có thêm
 `report.package.ok` + `report.package.groups` để CI grep được.
 
-### 3.9. Other (4 lệnh)
+### 3.9. Other (5 lệnh)
 
 ```bash
 # Verify pip-norm + multi-broker
 python -m vibecodekit_mql5.broker_safety MyEA.mq5
 
-# Trader-17 checklist (17 mục, pass threshold 15/17)
+# Trader-17 checklist (17 mục, pass threshold 15/17 — truyền MyEA.mq5
+# positional, KHÔNG phải flag --mq5/--source)
 python -m vibecodekit_mql5.trader_check MyEA.mq5
+
+# 7-layer permission gate (truyền source positional, KHÔNG --source).
+# Mode: personal (layer 1,2,3,4,7) | team (1-5,7) | enterprise (1-7).
+mql5-permission --mode personal MyEA.mq5
+mql5-permission --mode team     MyEA.mq5 --multibroker reports/
+mql5-permission --mode enterprise MyEA.mq5 \
+    --compile-log build.log --trader-check-report trader.json \
+    --matrix quality-matrix.html --journal rri-bt.json
 
 # Reconcile-install kit overlay vào project có sẵn
 python -m vibecodekit_mql5.install ~/existing-mt5-project
@@ -390,6 +424,13 @@ python -m vibecodekit_mql5.install ~/existing-mt5-project
 # One-shot lint + Trader-17 second opinion (optional)
 python -m vibecodekit_mql5.second_opinion MyEA.mq5
 ```
+
+`mql5-permission` exit 1 nếu bất kỳ layer fail. Layer 2 (compile)
+cần Wine + MetaEditor trên Linux — verify bằng `mql5-doctor --soft`; trong
+CI chỉ chạy docs / lint thì bỏ `--mode enterprise` để không bị chen.
+
+State dir (`--state-dir`, default `.rri-state`) cache payload từng
+layer để lần chạy sau tái sử dụng.
 
 ---
 
@@ -596,7 +637,7 @@ IDE/CLI (Claude Desktop, Cursor, Codex, Devin).
 
 ---
 
-## 6. 23 anti-pattern detector
+## 6. 26 anti-pattern detector
 
 Lint chia 2 cấp:
 
@@ -613,7 +654,7 @@ Lint chia 2 cấp:
 | AP-20 | Hardcode pip (`* 0.0001`, `* _Point`) | `lint.py` |
 | AP-21 | JPY/XAU digits broken (`digits-tested:` < 2 class) | `lint.py` |
 
-### 6.2. Best-practice APs — WARN, không block (14)
+### 6.2. Best-practice APs — WARN, không block (17)
 
 | ID | Mô tả | Detector |
 |----|------|---------|

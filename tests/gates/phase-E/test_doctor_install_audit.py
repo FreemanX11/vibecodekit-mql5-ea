@@ -16,6 +16,49 @@ def test_doctor_returns_report_with_checks() -> None:
     assert len(rep.checks) >= 10
 
 
+def test_doctor_scaffold_coverage_is_auto_derived() -> None:
+    """Doctor must validate every scaffold archetype on disk.
+
+    Regression for the silent-drift bug where ``REQUIRED_SCAFFOLDS`` was
+    a hard-coded list of 11 archetypes while ``scaffolds/`` shipped 23.
+    ``discover_scaffolds`` now reads the directory at run time so any
+    new ``<preset>/<stack>/EAName.mq5`` archetype is automatically
+    picked up by ``mql5-doctor`` without code edits.
+    """
+    discovered = doctor.discover_scaffolds(REPO_ROOT)
+    on_disk: set[str] = set()
+    for preset_dir in (REPO_ROOT / "scaffolds").iterdir():
+        if not preset_dir.is_dir():
+            continue
+        for stack_dir in preset_dir.iterdir():
+            if stack_dir.is_dir():
+                on_disk.add(f"{preset_dir.name}/{stack_dir.name}")
+    assert set(discovered) == on_disk, (
+        "doctor.discover_scaffolds must cover every <preset>/<stack> on disk"
+    )
+
+    rep = doctor.run_doctor(REPO_ROOT)
+    scaffold_checks = {
+        c["name"].removeprefix("scaffold:")
+        for c in rep.checks
+        if c["name"].startswith("scaffold:")
+    }
+    assert scaffold_checks == set(discovered), (
+        "run_doctor must add one check per discovered scaffold"
+    )
+    # Spot-check Phase 2A additions that the previous hard-coded list missed.
+    for new_arch in (
+        "trend/netting",
+        "scalping/hedging",
+        "service/standalone",
+        "news-trading/netting",
+        "arbitrage-stat/python-bridge",
+    ):
+        assert new_arch in scaffold_checks, (
+            f"Phase 2A archetype {new_arch} must be validated by doctor"
+        )
+
+
 def test_doctor_reports_metaeditor_and_terminal_via_env(
     tmp_path: Path, monkeypatch
 ) -> None:

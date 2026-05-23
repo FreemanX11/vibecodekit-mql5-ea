@@ -3,8 +3,10 @@
 Phase E command.  Validates that everything the kit needs is reachable
 on the current machine: Python toolchain, Wine when running MetaEditor
 through Wine, ``MetaEditor.exe`` itself, the kit's package
-importability, and the presence of the 28 reference docs + 11 scaffold
-archetypes.
+importability, the presence of the 28+ reference docs, and that **every
+scaffold archetype** under ``scaffolds/<preset>/<stack>/`` ships its
+``EAName.mq5`` (auto-derived at run time so new archetypes are picked
+up without code edits).
 
 Exit code 0 = healthy.  Non-zero = at least one check failed.  The
 JSON output enumerates every check so a CI workflow can decide which
@@ -72,7 +74,11 @@ def _probe(paths: tuple[str, ...]) -> Path | None:
             return p
     return None
 
-REQUIRED_SCAFFOLDS = [
+# Baseline list of scaffolds that MUST exist for the kit to be coherent.
+# These are the original 11 archetypes shipped before Phase 2A. They stay
+# explicit here so removals of any of them is caught even if the
+# ``scaffolds/`` directory listing accidentally regresses.
+_BASELINE_SCAFFOLDS: tuple[str, ...] = (
     "stdlib/netting", "stdlib/hedging", "stdlib/python-bridge",
     "wizard-composable/netting", "portfolio-basket/netting",
     "portfolio-basket/hedging", "ml-onnx/python-bridge",
@@ -80,7 +86,35 @@ REQUIRED_SCAFFOLDS = [
     "service-llm-bridge/cloud-api",
     "service-llm-bridge/self-hosted-ollama",
     "service-llm-bridge/embedded-onnx-llm",
-]
+)
+
+
+def discover_scaffolds(repo_root: Path = REPO_ROOT) -> list[str]:
+    """Return every ``<preset>/<stack>`` pair under ``scaffolds/``.
+
+    Auto-derived from the filesystem so new archetypes are validated by
+    doctor without requiring a code edit here. The baseline 11 from
+    ``_BASELINE_SCAFFOLDS`` are union-merged in case the directory walk
+    misses something (e.g. broken symlinks). The result is sorted for
+    deterministic output.
+    """
+    found: set[str] = set(_BASELINE_SCAFFOLDS)
+    scaffolds_root = repo_root / "scaffolds"
+    if scaffolds_root.is_dir():
+        for preset_dir in scaffolds_root.iterdir():
+            if not preset_dir.is_dir():
+                continue
+            for stack_dir in preset_dir.iterdir():
+                if not stack_dir.is_dir():
+                    continue
+                found.add(f"{preset_dir.name}/{stack_dir.name}")
+    return sorted(found)
+
+
+# Backwards-compat module-level constant. Older callers (tests, MCP) may
+# still ``import REQUIRED_SCAFFOLDS``; keep it pointing at the discovered
+# list so they automatically pick up newly added archetypes too.
+REQUIRED_SCAFFOLDS: list[str] = discover_scaffolds()
 
 
 @dataclass
@@ -151,7 +185,7 @@ def run_doctor(repo_root: Path = REPO_ROOT) -> DoctorReport:
     if refs_dir.exists():
         n = len(list(refs_dir.glob("*.md")))
         rep.add("references-count", n >= 28, f"{n} refs")
-    for scaffold in REQUIRED_SCAFFOLDS:
+    for scaffold in discover_scaffolds(repo_root):
         p = repo_root / "scaffolds" / scaffold / "EAName.mq5"
         rep.add(f"scaffold:{scaffold}", p.exists(), str(p))
     return rep
