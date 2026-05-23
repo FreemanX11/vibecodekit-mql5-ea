@@ -366,9 +366,9 @@ requires Wine + MetaEditor on Linux — use `mql5-doctor --soft` to
 verify; on a docs-only CI runner that lacks Wine, omit `--mode
 enterprise` so layer 2 doesn't block.
 
-The state dir (`--state-dir`, default `.vibecodekit-permission-state`)
-caches per-layer payloads so subsequent CLI runs can re-use them
-without re-executing each tool.
+The state dir (`--state-dir`, default `.rri-state`) caches per-layer
+payloads so subsequent CLI runs can re-use them without re-executing
+each tool.
 
 ---
 
@@ -573,7 +573,7 @@ for Claude Desktop, Cursor, Codex, and Devin.
 
 ---
 
-## 6. 25 anti-pattern detectors
+## 6. 26 anti-pattern detectors
 
 Lint is split across two tiers:
 

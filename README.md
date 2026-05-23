@@ -10,7 +10,7 @@
 > single-shot `mql5-auto-build` pipeline, an auto-fix loop for the eight
 > critical anti-patterns, a natural-language `mql5-spec-from-prompt`
 > parser, and a publishable quality-matrix dashboard), four MCP
-> servers, twenty-nine reference cheatsheets, twenty-five anti-pattern
+> servers, twenty-nine reference cheatsheets, twenty-six anti-pattern
 > detectors, and one fully worked 4-hour wizard-composable portfolio EA
 > — all delivered as a flat, router-free, fail-fast toolkit.
 
@@ -28,7 +28,7 @@
 | **MCP servers** | 4 (`metaeditor-bridge`, `mt5-bridge` READ-ONLY[^1], `algo-forge-bridge`, `vibecodekit-bridge`) |
 | **Reference docs** | 29 (`docs/references/50-survey.md` → `80-input-syntax.md`) |
 | **Scaffolds** | 23 archetypes × broker variants (`scaffolds/trend/netting`, `scalping/hedging`, `hft-async/netting`, `service-llm-bridge/{cloud-api,self-hosted-ollama,embedded-onnx-llm}`, `ml-onnx/python-bridge`, `wizard-composable/netting`, `service/standalone`, …) |
-| **Anti-pattern detectors** | 25 (8 critical `ERROR` + 17 best-practice `WARN` + 1 build-aware method-hiding) |
+| **Anti-pattern detectors** | 26 (8 critical `ERROR` + 17 best-practice `WARN` + 1 build-aware method-hiding) |
 | **Quality matrix** | 8 dimensions × 8 axes = 64-cell HTML report (PASS / WARN / FAIL / N/A) |
 | **Permission layers** | 7 (source-lint → compile → AP-lint → checklist → methodology → quality-matrix → broker-safety) |
 | **Mode-aware orchestrator** | PERSONAL (layers 1/2/3/4/7) · TEAM (1-5,7) · ENTERPRISE (1-7) |
@@ -125,7 +125,7 @@ hot-spots:
 | **MCP server** | 4 (`metaeditor-bridge`, `mt5-bridge` chỉ-đọc[^2], `algo-forge-bridge`, `vibecodekit-bridge`) — chuẩn MCP JSON-RPC 2.0 over stdio |
 | **Tài liệu tham khảo** | 29 cheatsheet (`docs/references/50-survey.md` → `80-input-syntax.md`) |
 | **Scaffold** | 23 archetype × biến thể tài khoản (`trend/netting`, `scalping/hedging`, `hft-async/netting`, 3 biến thể LLM bridge, ml-onnx, `wizard-composable/netting`, `service/standalone`, …) |
-| **Bộ dò chống mẫu xấu** | 25 detector (8 lỗi nghiêm trọng `ERROR` + 17 best-practice `WARN` + 1 method-hiding theo build) |
+| **Bộ dò chống mẫu xấu** | 26 detector (8 lỗi nghiêm trọng `ERROR` + 17 best-practice `WARN` + 1 method-hiding theo build) |
 | **Ma trận chất lượng** | 8 chiều × 8 trục = 64 ô HTML (PASS / WARN / FAIL / N/A) |
 | **Lớp permission** | 7 lớp (source-lint → compile → AP-lint → checklist → methodology → quality-matrix → broker-safety) |
 | **Mode orchestrator** | PERSONAL (lớp 1/2/3/4/7) · TEAM (1-5, 7) · ENTERPRISE (1-7) |

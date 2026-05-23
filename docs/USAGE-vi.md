@@ -429,8 +429,8 @@ python -m vibecodekit_mql5.second_opinion MyEA.mq5
 cần Wine + MetaEditor trên Linux — verify bằng `mql5-doctor --soft`; trong
 CI chỉ chạy docs / lint thì bỏ `--mode enterprise` để không bị chen.
 
-State dir (`--state-dir`, default `.vibecodekit-permission-state`)
-cache payload từng layer để lần chạy sau tái sử dụng.
+State dir (`--state-dir`, default `.rri-state`) cache payload từng
+layer để lần chạy sau tái sử dụng.
 
 ---
 
@@ -637,7 +637,7 @@ IDE/CLI (Claude Desktop, Cursor, Codex, Devin).
 
 ---
 
-## 6. 25 anti-pattern detector
+## 6. 26 anti-pattern detector
 
 Lint chia 2 cấp:
 
